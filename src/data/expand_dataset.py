@@ -43,16 +43,16 @@ def rewards_function(mask, ground_truth):
 def copy_best_rewards(in_dir, out_dir, ground_truth_dir, index):
     '''复制最佳奖励到文件夹,并命名为{image_id}_mask_{index}.png
     使用rewards_function重新计算奖励,并保存到{image_id}_mask_{index}_reward.txt'''
-    in_dir = os.path.join(root_path, in_dir)
+    input_dir = os.path.join(root_path, in_dir)
     ground_truth_dir = os.path.join(root_path, ground_truth_dir)
-    out_dir = os.path.join(root_path, out_dir)
+    output_dir = os.path.join(root_path, out_dir)
     os.makedirs(output_dir, exist_ok=True)
 
-    image_files = [f for f in os.listdir(in_dir) if f.endswith('.png')]
+    image_files = [f for f in os.listdir(input_dir) if f.endswith('.png')]
     image_files.sort()
-    for image_file in tqdm(image_files, desc="Processing images"):
+    for image_file in tqdm(image_files, desc="Copy best rewards"):
         image_id = extract_image_id(image_file)
-        image_path = os.path.join(in_dir, image_file)
+        image_path = os.path.join(input_dir, image_file)
         ground_truth_path = os.path.join(
             ground_truth_dir, f"{image_id}_Segmentation.png")
 

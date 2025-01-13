@@ -70,7 +70,7 @@ def select_best_rewards_image(in_dir='data/processed/train/ISBI2016_ISIC/auto_ma
     ground_truth_files = os.listdir(ground_truth_dir)
     ground_truth_files.sort()
 
-    for gt_file in tqdm(ground_truth_files, desc="Processing ground truth images"):
+    for gt_file in tqdm(ground_truth_files, desc="Select best rewards image"):
         image_id = gt_file.replace('_Segmentation.png', '')
         ground_truth_path = os.path.join(ground_truth_dir, gt_file)
         ground_truth = Image.open(ground_truth_path).convert('L')
@@ -111,7 +111,7 @@ def select_best_rewards_all_image(in_dir, ground_truth_dir, out_dir):
         in_dir) if os.path.isdir(os.path.join(in_dir, d))]
     sub_dirs.sort()
     os.makedirs(out_dir, exist_ok=True)
-    for sub_dir in tqdm(sub_dirs, desc="Processing subdirectories"):
+    for sub_dir in tqdm(sub_dirs, desc="Select best rewards all image"):
         image_id = sub_dir
         sub_dir_path = os.path.join(in_dir, sub_dir)
         ground_truth_path = os.path.join(

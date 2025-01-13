@@ -1,7 +1,7 @@
-import datetime
 import torch
 import torch.amp
 from tqdm import tqdm
+from datetime import datetime
 from models.model import RewardPredictionModel
 from data.loader import get_data_loader
 from utils.helpers import get_log_writer, get_root_path, device
@@ -63,9 +63,9 @@ def train():
         print(
             f"Epoch [{epoch + 1}/{epochs}], Train Loss:{train_loss / train_steps}, Test Loss: {test_loss / test_steps}")
 
-        if (epoch + 1) % 5 == 0:
-            torch.save(model.state_dict(), os.path.join(
-                root_path, 'result/models', f'{datetime.now().strftime("%Y-%m-%d_%H-%M-%S")}.pth'))
+        # if (epoch + 1) % 5 == 0:
+        torch.save(model.state_dict(), os.path.join(
+            root_path, 'result/models', f'{datetime.now().strftime("%Y-%m-%d_%H-%M-%S")}.pth'))
     latest_model_name = f'{datetime.now().strftime("%Y-%m-%d_%H-%M-%S")}.pth'
     torch.save(model.state_dict(), f'./checkpoint/{latest_model_name}')
     with open('./checkpoint/latest', 'w') as f:

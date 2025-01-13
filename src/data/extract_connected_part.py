@@ -22,7 +22,7 @@ def extract_largest_connected_component(
 
     mask_files = [f for f in os.listdir(point_masks_dir) if f.endswith('.png')]
     mask_files.sort()
-    for mask_file in tqdm(mask_files, desc="Processing point masks"):
+    for mask_file in tqdm(mask_files, desc="Extract largest connected component"):
         mask_path = os.path.join(point_masks_dir, mask_file)
         mask = Image.open(mask_path).convert('L')
         mask_array = np.array(mask)

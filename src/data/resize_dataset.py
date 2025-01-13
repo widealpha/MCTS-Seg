@@ -42,7 +42,7 @@ def rewards_function(mask, ground_truth):
     return max(adjusted_dice_score, 0)  # 确保奖励值不为负
 
 
-def resize_and_compare_images(in_dir, out_dir, raw_dir, size=(512, 512)):
+def resize_and_compare_images(in_dir, out_dir, raw_dir, size=(1024, 1024)):
     """
     获取 in_dir 目录下的所有图片，并将它们处理到统一的大小，然后与 mask_0 进行对比计算奖励。
     同时从 raw_dir 中获取原始图像并进行相同的调整。
@@ -58,7 +58,7 @@ def resize_and_compare_images(in_dir, out_dir, raw_dir, size=(512, 512)):
 
     image_files = [f for f in os.listdir(input_dir) if f.endswith('.png') and '_mask_' in f]
     image_files.sort()
-    for image_file in tqdm(image_files, desc="Processing images"):
+    for image_file in tqdm(image_files, desc="Resize and reward images"):
         image_id = extract_image_id(image_file)
         mask_id = extract_mask_id(image_file)
         image_path = os.path.join(input_dir, image_file)

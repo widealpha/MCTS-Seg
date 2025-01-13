@@ -12,12 +12,15 @@ from segment_anything import sam_model_registry, SamPredictor
 import math
 import random
 
-from src.models.model import RewardPredictionModel
-from utils import setup_seed, load_sam, device, calculate_iou, get_log_writer
-
+from models.model import RewardPredictionModel
+from utils.helpers import setup_seed, load_sam, device, calculate_iou, get_log_writer
+setup_seed()
+sam = load_sam()
 
 class Node:
     def __init__(self, state, parent=None):
+        # 自身的
+        self.depth = 0
         self.state = state
         self.parent = parent
         self.children = []
@@ -245,28 +248,6 @@ def train(sam, reward_model, image, ground_truth, max_step=2, iterations=4):
     log_writer.add_scalar('Result/reward', reward)
     log_writer.add_scalar('Result/IoU', iou)
     log_writer.close()
-    # log_writer.add_scalar('Reward', reward)
-    # log_writer.add_scalar('Time', elapsed_time)
-    # if log_path:
-    #     # 将奖励信息写入文件
-    #     with open(log_path, 'w') as f:
-    #
-    #         log_writer.write(f"Best action details: {best_action.state.get_info()}")
-    #         log_writer.write(f"Elapsed time: {elapsed_time:.2f} seconds")
-
-
-# def main1():
-#     env = GameState(image_path='ISIC_0000000.jpg',
-#                                ground_truth_mask='ISIC_0000000_segmentation.png')  # 替换为实际图像路径
-#     mcts = MCTS(iterations=1000)
-#     actions = []
-#     while not env.isTerminal():
-#         action = mcts.search(env)
-#         actions.append(action)
-#         env = env.takeAction(action)
-#
-#     iou = env.getReward()
-#     print('Final IOU: %.4f' % iou)
 
 def load_model():
     model = RewardPredictionModel().to(device)
