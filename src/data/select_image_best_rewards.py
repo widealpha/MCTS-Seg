@@ -1,4 +1,5 @@
 import os
+import shutil
 import numpy as np
 from PIL import Image
 from skimage.metrics import structural_similarity as ssim
@@ -10,10 +11,6 @@ from utils.helpers import get_root_path
 root_path = get_root_path()
 
 
-def copy_ground_truth():
-    pass
-
-
 def rewards_function(mask, ground_truth):
     """
     计算 mask 和 ground_truth 之间的 Dice 系数。
@@ -21,6 +18,8 @@ def rewards_function(mask, ground_truth):
     :param ground_truth: ground truth mask
     :return: Dice 系数
     """
+    mask = mask.astype(bool)
+    ground_truth = ground_truth.astype(bool)
     intersection = np.logical_and(mask, ground_truth)
     dice_score = (2 * np.sum(intersection)) / \
         (np.sum(mask) + np.sum(ground_truth) + 1e-7)
@@ -100,7 +99,58 @@ def select_best_rewards_image(in_dir='data/processed/train/ISBI2016_ISIC/auto_ma
                 f.write(f"{best_score}\n")
 
 
+def select_best_rewards_all_image(in_dir, ground_truth_dir, out_dir):
+    """
+    遍历每个子文件夹中的所有图片，并与对应的 ground truth 进行对比，选择奖励值最高的图片。
+    :param image_dir: 存储图片的主文件夹
+    :param ground_truth_dir: 存储 ground truth 的文件夹
+    :param output_dir: 存储最佳奖励图片的文件夹
+    """
+
+    sub_dirs = [d for d in os.listdir(
+        in_dir) if os.path.isdir(os.path.join(in_dir, d))]
+    sub_dirs.sort()
+    os.makedirs(out_dir, exist_ok=True)
+    for sub_dir in tqdm(sub_dirs, desc="Processing subdirectories"):
+        image_id = sub_dir
+        sub_dir_path = os.path.join(in_dir, sub_dir)
+        ground_truth_path = os.path.join(
+            ground_truth_dir, f"{image_id}_Segmentation.png")
+
+        if not os.path.exists(ground_truth_path):
+            print(f"Ground truth for {image_id} does not exist.")
+            continue
+
+        ground_truth = Image.open(ground_truth_path).convert('L')
+        ground_truth = np.array(ground_truth)
+
+        best_reward = -np.inf
+        best_image_file = None
+
+        image_files = [f for f in os.listdir(
+            sub_dir_path) if f.endswith('.png')]
+        for image_file in image_files:
+            image_path = os.path.join(sub_dir_path, image_file)
+            image = Image.open(image_path).convert('L')
+            mask = np.array(image)
+
+            reward = rewards_function(mask, ground_truth)
+            if reward > best_reward:
+                best_reward = reward
+                best_image_file = image_file
+
+        if best_image_file:
+            best_image_path = os.path.join(sub_dir_path, best_image_file)
+            output_image_path = os.path.join(out_dir, f"{image_id}_best.png")
+            shutil.copy(best_image_path, output_image_path)
+            with open(os.path.join(out_dir, f"{image_id}_reward.txt"), 'w') as f:
+                f.write(f"{best_reward}\n")
+
+
 if __name__ == '__main__':
     dir_name = 'connected_point_masks'
-    select_best_rewards_image(in_dir=f'data/processed/train/ISBI2016_ISIC/{dir_name}',
-                              out_dir=f'data/processed/train/ISBI2016_ISIC/{dir_name}/best_rewards')
+    # select_best_rewards_image(in_dir=f'data/processed/train/ISBI2016_ISIC/{dir_name}',
+    #                           out_dir=f'data/processed/train/ISBI2016_ISIC/{dir_name}/best_rewards')
+    select_best_rewards_all_image(in_dir=f'data/processed/train/ISBI2016_ISIC/all_point_masks',
+                                  out_dir=f'data/processed/train/ISBI2016_ISIC/all_point_masks/best_rewards',
+                                  ground_truth_dir='data/raw/train/ISBI2016_ISIC/ground_truth')

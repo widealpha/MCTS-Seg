@@ -7,10 +7,11 @@ import torch
 from segment_anything import sam_model_registry
 from torch.utils.tensorboard import SummaryWriter
 
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+device = "cuda" if torch.cuda.is_available() else "cpu"
+
 
 def get_log_writer():
-    return SummaryWriter(f'./logs/{datetime.now().strftime("%Y-%m-%d_%H-%M-%S")}')
+    return SummaryWriter(os.path.join(get_root_path(), 'results/logs', f'{datetime.now().strftime("%Y-%m-%d_%H-%M-%S")}'))
 
 
 def get_root_path():

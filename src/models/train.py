@@ -1,10 +1,14 @@
 import datetime
 import torch
+import torch.amp
 from tqdm import tqdm
 from models.model import RewardPredictionModel
-from utils.helpers import get_log_writer
-from utils.helpers import device
+from data.loader import get_data_loader
+from utils.helpers import get_log_writer, get_root_path, device
 from torch import nn, optim
+import os
+
+root_path = get_root_path()
 
 
 def train():
@@ -16,22 +20,23 @@ def train():
     optimizer = optim.Adam(model.parameters(), lr=lr)
     # 训练循环
     epochs = 30
-    train_dataloader, test_dataloader = data_loader()
-    scaler = torch.amp.GradScaler('cuda')
+    train_dataloader, test_dataloader = get_data_loader()
+    scaler = torch.amp.GradScaler(device)
 
     for epoch in range(epochs):
         model.train()
         train_loss = 0.0
         train_steps = 0
-        for image_feature, mask_feature, iou, image_id, mask_id, image, mask \
-                in tqdm(train_dataloader, desc=f'Epoch {epoch + 1}', ncols=100):
-            with torch.autocast(device_type='cuda', dtype=torch.float16):
+        for batch in tqdm(train_dataloader, desc=f'Epoch {epoch + 1}', ncols=100):
+            image = batch['image'].to(device)
+            mask = batch['mask'].to(device)
+            reward = batch['reward'].float().to(device)
+
+            with torch.amp.autocast(device):
                 # 将数据传递给模型
-                reward_pred = model(image.to(device), mask.to(device))
-                # 假设你有一个真实的 IoU 作为目标
-                reward_target = iou.float().to(device)  # 这里使用 IoU 作为 reward
+                reward_pred = model(image, mask)
                 # 计算损失
-                loss = criterion(reward_pred, reward_target)
+                loss = criterion(reward_pred, reward)
             # 反向传播和优化
             scaler.scale(loss).backward()
             scaler.step(optimizer)
@@ -41,16 +46,17 @@ def train():
             train_steps += 1
         log_writer.add_scalar('Loss/train', train_loss / train_steps, epoch)
         model.eval()
+        # 评估模型在测试集上的表现
         test_loss = 0.0
         test_steps = 0
         with torch.no_grad():
-            for image_feature, mask_feature, iou, image_id, mask_id, image, mask in test_dataloader:
-                # 将数据传递给模型
-                reward_pred = model(image.to(device), mask.to(device))
-                # 假设你有一个真实的 IoU 作为目标
-                reward_target = iou.float().to(device)  # 这里使用 IoU 作为 reward
-                # 计算损失
-                loss = criterion(reward_pred, reward_target)
+            for batch in test_dataloader:
+                image = batch['image'].to(device)
+                mask = batch['mask'].to(device)
+                reward = batch['reward'].float().to(device)
+
+                reward_pred = model(image, mask)
+                loss = criterion(reward_pred, reward)
                 test_loss += loss.item()
                 test_steps += 1
         log_writer.add_scalar('Loss/test', test_loss / test_steps, epoch)
@@ -58,16 +64,22 @@ def train():
             f"Epoch [{epoch + 1}/{epochs}], Train Loss:{train_loss / train_steps}, Test Loss: {test_loss / test_steps}")
 
         if (epoch + 1) % 5 == 0:
-            torch.save(model.state_dict(), f'./checkpoint/{datetime.now().strftime("%Y-%m-%d_%H-%M-%S")}.pth')
+            torch.save(model.state_dict(), os.path.join(
+                root_path, 'result/models', f'{datetime.now().strftime("%Y-%m-%d_%H-%M-%S")}.pth'))
     latest_model_name = f'{datetime.now().strftime("%Y-%m-%d_%H-%M-%S")}.pth'
     torch.save(model.state_dict(), f'./checkpoint/{latest_model_name}')
     with open('./checkpoint/latest', 'w') as f:
         f.write(latest_model_name)
-    test(model, log_writer, test_dataloader, 'Reward')  # 查看测试集分布
-    test(model, log_writer, train_dataloader, 'Reward-Train')  # 查看训练集分布
+    # test(model, log_writer, test_dataloader, 'Reward')  # 查看测试集分布
+    # test(model, log_writer, train_dataloader, 'Reward-Train')  # 查看训练集分布
     log_writer.add_text('Model/lr', f'{lr}')
     log_writer.add_text('Model/criterion', f'{criterion}')
     log_writer.add_text(f'Model/model', f'{model}')
-    dummy_input = (torch.randn(1, 256, 64, 64).to(device), torch.randn(1, 256, 64, 64).to(device))
+    dummy_input = (torch.randn(1, 256, 64, 64).to(device),
+                   torch.randn(1, 256, 64, 64).to(device))
     log_writer.add_graph(model, input_to_model=dummy_input)
     log_writer.close()
+
+
+if __name__ == '__main__':
+    train()

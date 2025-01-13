@@ -26,26 +26,18 @@ def rewards_function(mask, ground_truth):
     :param ground_truth: ground truth mask
     :return: Dice 系数
     """
+    mask = mask.astype(bool)
+    ground_truth = ground_truth.astype(bool)
     intersection = np.logical_and(mask, ground_truth)
-    dice_score = (2 * np.sum(intersection)) / \
-        (np.sum(mask) + np.sum(ground_truth) + 1e-7)
-    return dice_score
+    mask_sum = np.sum(mask)
+    ground_truth_sum = np.sum(ground_truth)
+    dice_score = (2 * np.sum(intersection)) / (mask_sum + ground_truth_sum)
+        # 识别散点并降低奖励
+    labeled_mask, num_features = label(mask, return_num=True)
+    scatter_penalty = (num_features - 1) * 0.01  # 每个散点降低的奖励值，假设为0.01
+    adjusted_dice_score = dice_score - scatter_penalty
 
-
-def copy_ground_truth(ground_truth_dir):
-    '''复制ground truth到文件夹,并命名为{image_id}_mask_0.png'''
-    output_dir = os.path.join(
-        root_path, 'data/processed/train/ISBI2016_ISIC/ground_truth')
-    os.makedirs(output_dir, exist_ok=True)
-
-    ground_truth_files = [f for f in os.listdir(
-        ground_truth_dir) if f.endswith('.png')]
-    for gt_file in ground_truth_files:
-        image_id = extract_image_id(gt_file)
-        src_path = os.path.join(ground_truth_dir, gt_file)
-        dst_path = os.path.join(output_dir, f"{image_id}_mask_0.png")
-        shutil.copy(src_path, dst_path)
-
+    return max(adjusted_dice_score, 0)  # 确保奖励值不为负
 
 def copy_best_rewards(image_dir, output_dir, ground_truth_dir, index):
     '''复制最佳奖励到文件夹,并命名为{image_id}_mask_{index}.png

@@ -1,3 +1,4 @@
 data/external/
 data/**
 results/**
+*.pyc
