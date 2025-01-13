@@ -8,9 +8,14 @@ from utils.helpers import get_root_path
 
 root_path = get_root_path()
 
-def extract_largest_connected_component():
-    point_masks_dir = os.path.join(root_path, 'data/processed/train/ISBI2016_ISIC/point_masks')
-    connected_masks_dir = os.path.join(root_path, 'data/processed/train/ISBI2016_ISIC/connected_point_masks')
+
+def extract_largest_connected_component(
+        in_dir='data/processed/train/ISBI2016_ISIC/point_masks',
+        out_dir='data/processed/train/ISBI2016_ISIC/connected_point_masks'):
+    point_masks_dir = os.path.join(
+        root_path, in_dir)
+    connected_masks_dir = os.path.join(
+        root_path, out_dir)
 
     if not os.path.exists(connected_masks_dir):
         os.makedirs(connected_masks_dir)
@@ -34,7 +39,8 @@ def extract_largest_connected_component():
                 largest_component = region
 
         if largest_component is not None:
-            largest_component_mask = (labeled_mask == largest_component.label).astype(np.uint8) * 255
+            largest_component_mask = (
+                labeled_mask == largest_component.label).astype(np.uint8) * 255
 
             # Label the holes in the largest component
             inverted_mask = np.logical_not(largest_component_mask // 255)
@@ -48,7 +54,9 @@ def extract_largest_connected_component():
                         largest_component_mask[coord[0], coord[1]] = 255
 
             largest_component_image = Image.fromarray(largest_component_mask)
-            largest_component_image.save(os.path.join(connected_masks_dir, mask_file))
+            largest_component_image.save(
+                os.path.join(connected_masks_dir, mask_file))
+
 
 if __name__ == '__main__':
     extract_largest_connected_component()

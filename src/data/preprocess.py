@@ -1,30 +1,69 @@
 import os
-import shutil
+from utils.helpers import get_root_path
+from data.sam_seg import sam_auto_mask, sam_point_mask
+from data.select_image_best_rewards import select_best_rewards_all_image, select_best_rewards_image
+from data.extract_connected_part import extract_largest_connected_component
+from data.expand_dataset import copy_best_rewards
+from data.resize_dataset import resize_and_compare_images
+
+root_path = get_root_path()
 
 
-def delete_old():
-    folder_path = current_dir = os.path.dirname(__file__)
-
-    # 构建指向 'data/processed' 文件夹的相对路径
-    processed_data_dir = os.path.join(current_dir, '../../data/processed')
-    # 确保路径存在
-    if os.path.exists(folder_path):
-        # 遍历文件夹中的所有文件和子文件夹
-        for filename in os.listdir(folder_path):
-            file_path = os.path.join(folder_path, filename)
-            try:
-                # 如果是文件夹，递归删除
-                if os.path.isdir(file_path):
-                    shutil.rmtree(file_path)
-                # 如果是文件，删除文件
-                else:
-                    os.remove(file_path)
-            except Exception as e:
-                print(f"Error: {file_path} : {e}")
-
-        print(f"All contents in '{folder_path}' have been deleted.")
+def generate_data(train=False):
+    # 定义目录路径
+    if train:
+        data_type = 'train'
     else:
-        print(f"The folder '{folder_path}' does not exist.")
-        
-if __name__ == 'main':
-    delete_old()
+        data_type = 'test'
+
+    expanded_dir = os.path.join(
+        root_path, f'data/processed/{data_type}/expanded')
+    raw_image_dir = os.path.join(
+        root_path, f'data/raw/{data_type}/ISBI2016_ISIC/image')
+    ground_truth_dir = os.path.join(
+        root_path, f'data/raw/{data_type}/ISBI2016_ISIC/ground_truth')
+    auto_masks_dir = os.path.join(
+        root_path, f'data/processed/{data_type}/ISBI2016_ISIC/auto_masks')
+    all_point_masks_dir = os.path.join(
+        root_path, f'data/processed/{data_type}/ISBI2016_ISIC/all_point_masks')
+    point_masks_dir = os.path.join(
+        root_path, f'data/processed/{data_type}/ISBI2016_ISIC/point_masks')
+    connected_point_masks_dir = os.path.join(
+        root_path, f'data/processed/{data_type}/ISBI2016_ISIC/connected_point_masks')
+    resized_dir = os.path.join(
+        root_path, f'data/processed/{data_type}/resized')
+
+    # 生成 SAM 自动掩码
+    sam_auto_mask(in_dir=raw_image_dir, out_dir=auto_masks_dir)
+
+    # 选择最佳奖励图像
+    select_best_rewards_image(in_dir=auto_masks_dir, ground_truth_dir=ground_truth_dir,
+                              out_dir=os.path.join(auto_masks_dir, 'best_rewards'))
+    # 生成随机单点掩码
+    sam_point_mask(in_dir=raw_image_dir, out_dir=point_masks_dir,
+                   ground_truth_dir=ground_truth_dir)
+    # 选择最佳奖励图像
+    select_best_rewards_image(in_dir=point_masks_dir, ground_truth_dir=ground_truth_dir,
+                              out_dir=os.path.join(point_masks_dir, 'best_rewards'))
+    # 提取最大连通部分
+    extract_largest_connected_component(
+        in_dir=point_masks_dir, out_dir=connected_point_masks_dir)
+
+    # 复制最佳奖励文件
+    copy_best_rewards(in_dir=ground_truth_dir, out_dir=expanded_dir,
+                      ground_truth_dir=ground_truth_dir, index=0)
+    copy_best_rewards(in_dir=os.path.join(auto_masks_dir, 'best_rewards'), out_dir=expanded_dir,
+                      ground_truth_dir=ground_truth_dir, index=1)
+    copy_best_rewards(in_dir=os.path.join(connected_point_masks_dir, 'best_rewards'), out_dir=expanded_dir,
+                      ground_truth_dir=ground_truth_dir, index=2)
+    copy_best_rewards(in_dir=os.path.join(point_masks_dir, 'best_rewards'), out_dir=expanded_dir,
+                      ground_truth_dir=ground_truth_dir, index=3)
+
+    # 调整图像大小并生成奖励
+    resize_and_compare_images(
+        in_dir=expanded_dir, out_dir=resized_dir, raw_dir=raw_image_dir)
+
+
+if __name__ == '__main__':
+    # generate_data(train=True)  # 生成训练数据
+    generate_data(train=False)  # 生成测试数据

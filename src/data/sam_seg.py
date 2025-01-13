@@ -14,15 +14,12 @@ sam = load_sam()
 root_path = get_root_path()
 
 
-def sam_auto_mask():
+def sam_auto_mask(in_dir='data/raw/train/ISBI2016_ISIC/image', out_dir='data/processed/train/ISBI2016_ISIC/auto_masks'):
     mask_generator = SamAutomaticMaskGenerator(sam)
     # 定义图片文件夹路径
-    image_folder = os.path.join(
-        root_path, 'data/raw/train/ISBI2016_ISIC/image')
-    output_folder = os.path.join(
-        root_path, 'data/processed/train/ISBI2016_ISIC/auto_masks')
-    json_output_file = os.path.join(
-        root_path, 'data/processed/train/ISBI2016_ISIC/auto_masks/mask_metadata.json')
+    image_folder = os.path.join( root_path, in_dir)
+    output_folder = os.path.join(root_path, out_dir)
+    json_output_file = os.path.join(root_path, out_dir, 'mask_metadata.json')
     metadata = []  # 用于存储所有 mask 信息
     os.makedirs(output_folder, exist_ok=True)
     # 检查路径是否存在
@@ -88,12 +85,9 @@ def sam_point_mask(point_number, grid_size,
     将图像网格划分为grid_size * grid_size的网格，
     依据ground_truth从每个网格中随机选取point_number个在其中的点，生成点标注的mask
     '''
-    image_folder = os.path.join(
-        root_path, in_dir)
-    ground_truth_folder = os.path.join(
-        root_path, ground_truth_dir)
-    output_folder = os.path.join(
-        root_path, out_dir)
+    image_folder = os.path.join(      root_path, in_dir)
+    ground_truth_folder = os.path.join(root_path, ground_truth_dir)
+    output_folder = os.path.join(        root_path, out_dir)
     os.makedirs(output_folder, exist_ok=True)
 
     if not os.path.exists(image_folder) or not os.path.exists(ground_truth_folder):
@@ -165,12 +159,9 @@ def sam_point_mask_all_points(grid_size,
     将图像网格划分为grid_size * grid_size的网格，
     依据ground_truth从每个网格中随机选取point_number个在其中的点，生成点标注的mask
     '''
-    image_folder = os.path.join(
-        root_path, in_dir)
-    ground_truth_folder = os.path.join(
-        root_path, ground_truth_dir)
-    output_folder = os.path.join(
-        root_path, out_dir)
+    image_folder = os.path.join(root_path, in_dir)
+    ground_truth_folder = os.path.join(root_path, ground_truth_dir)
+    output_folder = os.path.join(root_path, out_dir)
     os.makedirs(output_folder, exist_ok=True)
 
     if not os.path.exists(image_folder) or not os.path.exists(ground_truth_folder):
@@ -208,29 +199,36 @@ def sam_point_mask_all_points(grid_size,
 
                 for i in range(grid_size):
                     for j in range(grid_size):
-                        grid = gt_array[i * grid_height:(i + 1) * grid_height, j * grid_width:(j + 1) * grid_width]
+                        grid = gt_array[i * grid_height:(
+                            i + 1) * grid_height, j * grid_width:(j + 1) * grid_width]
                         center_y = i * grid_height + grid_height // 2
                         center_x = j * grid_width + grid_width // 2
                         points.append([center_x, center_y])
-                        labels.append(1 if gt_array[center_y, center_x] > 0 else 0)
+                        labels.append(
+                            1 if gt_array[center_y, center_x] > 0 else 0)
 
                 points = np.array(points)
                 labels = np.array(labels)
 
                 predictor.set_image(img_array)
 
-                image_output_folder = os.path.join(output_folder, os.path.splitext(image_file)[0])
+                image_output_folder = os.path.join(
+                    output_folder, os.path.splitext(image_file)[0])
                 os.makedirs(image_output_folder, exist_ok=True)
 
                 for idx, point in enumerate(points):
-                    masks, _, _ = predictor.predict(np.array([point]), np.array([labels[idx]]))
+                    masks, _, _ = predictor.predict(
+                        np.array([point]), np.array([labels[idx]]))
                     for i, mask in enumerate(masks):
-                        mask_image = Image.fromarray(mask.astype('uint8') * 255)
+                        mask_image = Image.fromarray(
+                            mask.astype('uint8') * 255)
                         mask_filename = f"{os.path.splitext(image_file)[0]}_point_mask_{idx}_{i}.png"
-                        mask_image.save(os.path.join(image_output_folder, mask_filename))
+                        mask_image.save(os.path.join(
+                            image_output_folder, mask_filename))
 
         except Exception as e:
             print(f"Error processing image {image_file}: {e}")
+
 
 if __name__ == '__main__':
     sam_point_mask_all_points(grid_size=20)

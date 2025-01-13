@@ -50,7 +50,7 @@ class ISICDataset(Dataset):
 def get_data_loader():
     # 路径
     train_dir = os.path.join(root_path, 'data/processed/train/resized')
-    test_dir = os.path.join(root_path, 'data/processed/train/resized')
+    test_dir = os.path.join(root_path, 'data/processed/test/resized')
 
     # 创建数据集实例
     train_dataset = ISICDataset(image_dir=train_dir)

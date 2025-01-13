@@ -32,23 +32,27 @@ def rewards_function(mask, ground_truth):
     mask_sum = np.sum(mask)
     ground_truth_sum = np.sum(ground_truth)
     dice_score = (2 * np.sum(intersection)) / (mask_sum + ground_truth_sum)
-        # 识别散点并降低奖励
+    # 识别散点并降低奖励
     labeled_mask, num_features = label(mask, return_num=True)
     scatter_penalty = (num_features - 1) * 0.01  # 每个散点降低的奖励值，假设为0.01
     adjusted_dice_score = dice_score - scatter_penalty
 
     return max(adjusted_dice_score, 0)  # 确保奖励值不为负
 
-def copy_best_rewards(image_dir, output_dir, ground_truth_dir, index):
+
+def copy_best_rewards(in_dir, out_dir, ground_truth_dir, index):
     '''复制最佳奖励到文件夹,并命名为{image_id}_mask_{index}.png
     使用rewards_function重新计算奖励,并保存到{image_id}_mask_{index}_reward.txt'''
+    in_dir = os.path.join(root_path, in_dir)
+    ground_truth_dir = os.path.join(root_path, ground_truth_dir)
+    out_dir = os.path.join(root_path, out_dir)
     os.makedirs(output_dir, exist_ok=True)
 
-    image_files = [f for f in os.listdir(image_dir) if f.endswith('.png')]
+    image_files = [f for f in os.listdir(in_dir) if f.endswith('.png')]
     image_files.sort()
     for image_file in tqdm(image_files, desc="Processing images"):
         image_id = extract_image_id(image_file)
-        image_path = os.path.join(image_dir, image_file)
+        image_path = os.path.join(in_dir, image_file)
         ground_truth_path = os.path.join(
             ground_truth_dir, f"{image_id}_Segmentation.png")
 
@@ -75,17 +79,12 @@ def copy_best_rewards(image_dir, output_dir, ground_truth_dir, index):
 
 
 if __name__ == '__main__':
-    output_dir = os.path.join(
-        root_path, 'data/processed/train/expanded')
-    ground_truth_dir = os.path.join(
-        root_path, 'data/raw/train/ISBI2016_ISIC/ground_truth')
+    output_dir = 'data/processed/train/expanded'
+    ground_truth_dir = 'data/raw/train/ISBI2016_ISIC/ground_truth'
     copy_best_rewards(ground_truth_dir, output_dir, ground_truth_dir, 0)
-    image_dir = os.path.join(
-        root_path, 'data/processed/train/ISBI2016_ISIC/auto_masks/best_rewards')
+    image_dir = 'data/processed/train/ISBI2016_ISIC/auto_masks/best_rewards'
     copy_best_rewards(image_dir, output_dir, ground_truth_dir, 1)
-    image_dir = os.path.join(
-        root_path, 'data/processed/train/ISBI2016_ISIC/connected_point_masks/best_rewards')
+    image_dir = 'data/processed/train/ISBI2016_ISIC/connected_point_masks/best_rewards'
     copy_best_rewards(image_dir, output_dir, ground_truth_dir, 2)
-    image_dir = os.path.join(
-        root_path, 'data/processed/train/ISBI2016_ISIC/point_masks/best_rewards')
+    image_dir = 'data/processed/train/ISBI2016_ISIC/point_masks/best_rewards'
     copy_best_rewards(image_dir, output_dir, ground_truth_dir, 3)
