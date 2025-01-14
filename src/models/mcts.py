@@ -17,10 +17,9 @@ from utils.helpers import setup_seed, load_sam, device, calculate_iou, get_log_w
 setup_seed()
 sam = load_sam()
 
+
 class Node:
     def __init__(self, state, parent=None):
-        # 自身的
-        self.depth = 0
         self.state = state
         self.parent = parent
         self.children = []
@@ -28,7 +27,7 @@ class Node:
         self.wins = 0
 
     def add_child(self, child_state):
-        child_node = Node(child_state, parent=self)
+        child_node = Node(child_state,  parent=self)
         self.children.append(child_node)
         return child_node
 
@@ -89,15 +88,24 @@ class MCTS:
             node = node.parent
 
 
+class GlobalInfo:
+    def __init__(self, image: np.array, predictor: SamPredictor, reward_model: RewardPredictionModel):
+        self.image = image
+        self.predictor = predictor
+        self.reward_model = reward_model
+
+
 class GameState:
     def __init__(self, predictor: SamPredictor, sam_encoder, image, reward_model, points=None, max_step=None):
+        self.depth = 0
         self.image = image  # 读取图像
         self.reward_model = reward_model  # 读取真实标签
 
         if points:
             self.points = points
         else:
-            self.points = self.divide_image_into_grid(image_shape=self.image.shape, grid_size=(20, 20))  # 将图像分成网格
+            self.points = self.divide_image_into_grid(
+                image_shape=self.image.shape, grid_size=(8, 8))  # 将图像分成网格
             self.actions = list(range(len(self.points) * 2))
             self.action_space = spaces.Discrete(len(self.actions))
         self.max_step = max_step
@@ -151,9 +159,11 @@ class GameState:
             point, label = self.action_2_point_label(action)
             points.append(point)
             labels.append(label)
-        coords_torch = torch.as_tensor(points, dtype=torch.float, device=device)
+        coords_torch = torch.as_tensor(
+            points, dtype=torch.float, device=device)
         labels_torch = torch.as_tensor(labels, dtype=torch.int, device=device)
-        coords_torch, labels_torch = coords_torch[None, :, :], labels_torch[None, :]
+        coords_torch, labels_torch = coords_torch[None,
+                                                  :, :], labels_torch[None, :]
         masks, _, _ = self.predictor.predict_torch(point_coords=coords_torch, point_labels=labels_torch,
                                                    multimask_output=False)
         return masks[0]
@@ -171,7 +181,8 @@ class GameState:
         mask_tensor = mask_tensor.unsqueeze(1).repeat(1, 3, 1, 1).to(device)
         # mask_predictor: SamPredictor = self.mask_predictor
         # mask_predictor.set_image(mask)
-        image_tensor = torch.tensor(self.image).float().permute(2, 0, 1).unsqueeze(0).to(device)
+        image_tensor = torch.tensor(self.image).float().permute(
+            2, 0, 1).unsqueeze(0).to(device)
         # print(image_tensor.shape)
         # print(mask_tensor.shape)
         with torch.no_grad():
@@ -203,7 +214,8 @@ class GameState:
 
 
 def get_real_iou(sam_predict, points, labels, ground_truth):
-    mask = sam_predict.predict(np.array(points), np.array(labels), multimask_output=False)
+    mask = sam_predict.predict(
+        np.array(points), np.array(labels), multimask_output=False)
     mask = mask[0]
     mask = cv2.resize(mask, ground_truth.shape)
     return calculate_iou(mask, ground_truth)
@@ -230,9 +242,11 @@ def train(sam, reward_model, image, ground_truth, max_step=2, iterations=4):
     end_time = time.time()
     elapsed_time = end_time - start_time
     points, labels = best_action.state.get_point_labels()
-    mask, _, __ = predictor.predict(np.array(points), np.array(labels), multimask_output=False)
+    mask, _, __ = predictor.predict(
+        np.array(points), np.array(labels), multimask_output=False)
     resized_mask = (mask[0] * 255).astype(np.uint8)
-    resized_mask = cv2.resize(resized_mask, (ground_truth.shape[1], ground_truth.shape[0]))
+    resized_mask = cv2.resize(
+        resized_mask, (ground_truth.shape[1], ground_truth.shape[0]))
     image = torch.tensor(image)
     resized_mask = torch.tensor(resized_mask)
     ground_truth = torch.tensor(ground_truth)
@@ -249,6 +263,7 @@ def train(sam, reward_model, image, ground_truth, max_step=2, iterations=4):
     log_writer.add_scalar('Result/IoU', iou)
     log_writer.close()
 
+
 def load_model():
     model = RewardPredictionModel().to(device)
     with open('reward_model/checkpoint/latest') as f:
@@ -262,7 +277,8 @@ def load_dataset():
     dataset = []
     image_dir = "data/processed/ISBI2016_ISIC/test"
     file_list = os.listdir(image_dir)
-    image_files = [file.split('.')[0] for file in file_list if re.match(r'^ISIC_\d{7}\.png$', file)]
+    image_files = [file.split('.')[0] for file in file_list if re.match(
+        r'^ISIC_\d{7}\.png$', file)]
     image_files.sort()
     for idx, image_id in enumerate(image_files):
         dataset.append((idx, f'{os.path.join(image_dir, f"{image_id}.png")}',

@@ -65,9 +65,10 @@ def train():
 
         # if (epoch + 1) % 5 == 0:
         torch.save(model.state_dict(), os.path.join(
-            root_path, 'result/models', f'{datetime.now().strftime("%Y-%m-%d_%H-%M-%S")}.pth'))
+            root_path, 'results/models', f'{datetime.now().strftime("%Y-%m-%d_%H-%M-%S")}.pth'))
     latest_model_name = f'{datetime.now().strftime("%Y-%m-%d_%H-%M-%S")}.pth'
-    torch.save(model.state_dict(), f'./checkpoint/{latest_model_name}')
+    torch.save(model.state_dict(), os.path.join(
+            root_path, 'results/models', f'{datetime.now().strftime("%Y-%m-%d_%H-%M-%S")}.pth'))
     with open('./checkpoint/latest', 'w') as f:
         f.write(latest_model_name)
     # test(model, log_writer, test_dataloader, 'Reward')  # 查看测试集分布
