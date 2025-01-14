@@ -47,7 +47,8 @@ class ISICDataset(Dataset):
             'reward': reward
         }
 
-def get_data_loader():
+
+def get_data_loader(batch_size=2, shuffle=True):
     # 路径
     train_dir = os.path.join(root_path, 'data/processed/train/resized')
     test_dir = os.path.join(root_path, 'data/processed/test/resized')
@@ -57,6 +58,8 @@ def get_data_loader():
     test_dataset = ISICDataset(image_dir=test_dir)
 
     # 创建数据加载器
-    train_dataloader = DataLoader(train_dataset, batch_size=2, shuffle=True)
-    test_dataloader = DataLoader(test_dataset, batch_size=4, shuffle=False)
+    train_dataloader = DataLoader(
+        train_dataset, batch_size=batch_size, shuffle=shuffle)
+    test_dataloader = DataLoader(
+        test_dataset, batch_size=batch_size, shuffle=shuffle)
     return train_dataloader, test_dataloader

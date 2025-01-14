@@ -287,7 +287,7 @@ def load_dataset():
 
 
 def main():
-    setup_seed(2024)
+    setup_seed()
     model = load_model()
     sam = load_sam()
     for data in load_dataset():
@@ -299,7 +299,7 @@ def main():
 
 
 def test_model():
-    setup_seed(2024)
+    setup_seed()
     model = RewardPredictionModel().to(device)
     model_path = 'reward_model/checkpoint/2024-11-15_13-41-07.pth'  # 模型权重文件路径
     model.load_state_dict(torch.load(model_path))
