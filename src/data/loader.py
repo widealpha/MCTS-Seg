@@ -11,7 +11,7 @@ root_path = get_root_path()
 
 
 class ISICDataset(Dataset):
-    def __init__(self, image_dir):
+    def __init__(self, image_dir, per_image_mask=4):
         """
         :param image_dir: 原图像所在目录
         """
@@ -19,7 +19,8 @@ class ISICDataset(Dataset):
         file_list = os.listdir(image_dir)
         self.image_ids = [file.split('_raw')[0] for file in file_list if re.match(
             r'^ISIC_\d+_raw\.jpg$', file)]
-        self.per_image_mask = 4
+        self.image_ids.sort()
+        self.per_image_mask = per_image_mask
         self.transform = transforms.ToTensor()
 
     def __len__(self):
@@ -44,7 +45,8 @@ class ISICDataset(Dataset):
         return {
             'image': image,
             'mask': mask,
-            'reward': reward
+            'reward': reward,
+            'image_id': image_id
         }
 
 
@@ -63,3 +65,11 @@ def get_data_loader(batch_size=2, shuffle=True):
     test_dataloader = DataLoader(
         test_dataset, batch_size=batch_size, shuffle=shuffle)
     return train_dataloader, test_dataloader
+
+
+def get_mcts_test_loader(batch_size=1, shuffle=False):
+    test_dir = os.path.join(root_path, 'data/processed/test/resized')
+    test_dataset = ISICDataset(image_dir=test_dir, per_image_mask=1)
+    test_dataloader = DataLoader(
+        test_dataset, batch_size=batch_size, shuffle=shuffle)
+    return test_dataloader
