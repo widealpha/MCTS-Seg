@@ -72,7 +72,7 @@ class State:
         new_masks, _, _ = global_info.predictor.predict(
             points, labels, multimask_output=False)
         # 使用 RewardModel 计算 reward
-        mask = torch.Tensor(new_masks[0]).unsqueeze(0).to(device)
+        mask = torch.Tensor(new_masks[0]).unsqueeze(0).unsqueeze(0).to(device)
         with torch.no_grad():
             reward = global_info.reward_model(global_info.batch_image, mask)
             return reward.item()
@@ -108,7 +108,7 @@ class Node:
 
 
 class MCTS:
-    def __init__(self, root: 'Node', global_info: 'GlobalInfo'):
+    def __init__(self, root: Node, global_info: GlobalInfo):
         self.root = root
         self.global_info = global_info
 
@@ -120,7 +120,7 @@ class MCTS:
             self.backpropagate(node, reward)
         return self.root.best_child(exploration_weight=0)
 
-    def select(self, node):
+    def select(self, node: Node):
         while node.is_fully_expanded() and node.children:
             node = node.best_child()
         return self.expand(node)
@@ -157,7 +157,7 @@ class MCTS:
 
 def load_model():
     model_path = os.path.join(
-        root_path, 'results/models/2025-01-13_23-48-35.pth')
+        root_path, 'results/models/2025-01-15_14-24-59.pth')
     model = RewardPredictionModel().to(device)
     model.load_state_dict(torch.load(model_path, weights_only=True))
     # model = torch.load(model_path).to(device)
@@ -205,7 +205,6 @@ def sam_seg_cal_reward(predictor, points, labels, ground_truth, image_id):
     # 保存分割结果和 mask
     new_mask_image = (new_mask * 255).astype(np.uint8)
     ground_truth_image = (ground_truth[0] * 255).astype(np.uint8)
-    print(new_mask_image.shape, ground_truth_image.shape)
     combined_image = np.concatenate(
         (new_mask_image, ground_truth_image), axis=1)
     Image.fromarray(combined_image).save(result_path)
@@ -244,7 +243,8 @@ if __name__ == '__main__':
         # 将最佳点和奖励写入文件
         results_dir = os.path.join('results', 'mcts')
         os.makedirs(results_dir, exist_ok=True)
-        result_file_path = os.path.join(results_dir, f'{image_id}_best_points_and_reward.txt')
+        result_file_path = os.path.join(
+            results_dir, f'{image_id}_best_points_and_reward.txt')
         with open(result_file_path, 'w') as f:
             f.write(f"Best points: {points.tolist()}\n")
             f.write(f"Reward: {reward}\n")

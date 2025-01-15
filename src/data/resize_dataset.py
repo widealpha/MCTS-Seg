@@ -19,27 +19,50 @@ def extract_mask_id(mask_file):
         raise ValueError(f"无法从路径中提取 mask_id: {mask_file}")
 
 
+def calculate_iou(mask, ground_truth):
+    """
+    计算两个掩码之间的交并比（IOU）。
+    :param mask: 第一个掩码
+    :param ground_truth: 第二个掩码
+    :return: IOU 值
+    """
+    intersection = np.logical_and(mask, ground_truth).sum()
+    union = np.logical_or(mask, ground_truth).sum()
+    iou = intersection / union if union != 0 else 0
+    return iou
+
 def rewards_function(mask, ground_truth):
     """
-    计算 mask 和 ground_truth 之间的 Dice 系数，并根据散点数量降低奖励。
+    计算 mask 和 ground_truth 之间的 IOU，并根据散点数量降低奖励。
+    然后将品质按照不同区间划分成 12 档，将奖励映射到 0-11 之间。
     :param mask: 预测的 mask
     :param ground_truth: ground truth mask
-    :return: 调整后的 Dice 系数
+    :return: 调整后的奖励值
     """
     mask = mask.astype(bool)
     ground_truth = ground_truth.astype(bool)
-    intersection = np.logical_and(mask, ground_truth)
-    mask_sum = np.sum(mask)
-    ground_truth_sum = np.sum(ground_truth)
-    dice_score = (2 * np.sum(intersection)) / \
-        (mask_sum + ground_truth_sum)
+    
+    # 计算 IOU
+    iou = calculate_iou(mask, ground_truth)
 
     # 识别散点并降低奖励
     labeled_mask, num_features = label(mask, return_num=True)
     scatter_penalty = (num_features - 1) * 0.02  # 每个散点降低的奖励值，假设为0.02
-    adjusted_dice_score = dice_score - scatter_penalty
+    adjusted_iou = iou - scatter_penalty
 
-    return max(adjusted_dice_score, 0)  # 确保奖励值不为负
+    # 将品质按照不同区间划分成 12 档，将奖励映射到 0-11 之间
+    reward = max(adjusted_iou, 0)  # 确保奖励值不为负
+
+    if reward >= 0.8:
+        reward = 8 + int((reward - 0.8) / 0.05)
+    elif reward >= 0.5:
+        reward = 4 + int((reward - 0.5) / 0.075)
+    else:
+        reward = int(reward / 0.125)
+
+    reward = min(reward, 11)  # 确保奖励值不超过 11
+
+    return reward
 
 
 def resize_and_compare_images(in_dir, out_dir, raw_dir, size=(1024, 1024)):

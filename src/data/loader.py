@@ -50,7 +50,7 @@ class ISICDataset(Dataset):
         }
 
 
-def get_data_loader(batch_size=4, shuffle=True):
+def get_data_loader(batch_size=4, shuffle=True, test_batch_size=8, test_shuffle=False):
     # 路径
     train_dir = os.path.join(root_path, 'data/processed/train/resized')
     test_dir = os.path.join(root_path, 'data/processed/test/resized')
@@ -63,5 +63,5 @@ def get_data_loader(batch_size=4, shuffle=True):
     train_dataloader = DataLoader(
         train_dataset, batch_size=batch_size, shuffle=shuffle)
     test_dataloader = DataLoader(
-        test_dataset, batch_size=batch_size, shuffle=shuffle)
+        test_dataset, batch_size=test_batch_size, shuffle=test_shuffle)
     return train_dataloader, test_dataloader

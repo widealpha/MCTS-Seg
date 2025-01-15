@@ -45,10 +45,10 @@ def train():
             train_loss += loss.item()
             train_steps += 1
         log_writer.add_scalar('Loss/train', train_loss / train_steps, epoch)
-        model.eval()
         # 评估模型在测试集上的表现
         test_loss = 0.0
         test_steps = 0
+        model.eval()
         with torch.no_grad():
             for batch in test_dataloader:
                 image = batch['image'].to(device)
@@ -63,14 +63,12 @@ def train():
         print(
             f"Epoch [{epoch + 1}/{epochs}], Train Loss:{train_loss / train_steps}, Test Loss: {test_loss / test_steps}")
 
-        # if (epoch + 1) % 5 == 0:
-        torch.save(model.state_dict(), os.path.join(
-            root_path, 'results/models', f'{datetime.now().strftime("%Y-%m-%d_%H-%M-%S")}.pth'))
+        if (epoch + 1) % 5 == 0:
+            torch.save(model.state_dict(), os.path.join(
+                root_path, 'results/models', f'{datetime.now().strftime("%Y-%m-%d_%H-%M-%S")}.pth'))
     latest_model_name = f'{datetime.now().strftime("%Y-%m-%d_%H-%M-%S")}.pth'
     torch.save(model.state_dict(), os.path.join(
-            root_path, 'results/models', f'{datetime.now().strftime("%Y-%m-%d_%H-%M-%S")}.pth'))
-    with open('./checkpoint/latest', 'w') as f:
-        f.write(latest_model_name)
+            root_path, 'results/models', latest_model_name))
     # test(model, log_writer, test_dataloader, 'Reward')  # 查看测试集分布
     # test(model, log_writer, train_dataloader, 'Reward-Train')  # 查看训练集分布
     log_writer.add_text('Model/lr', f'{lr}')
