@@ -2,3 +2,5 @@ data/external/
 data/**
 results/**
 *.pyc
+*.out
+*.log

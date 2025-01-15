@@ -35,7 +35,7 @@ class ISICDataset(Dataset):
 
         try:
             image = self.transform(Image.open(image_path))
-            mask = self.transform(Image.open(mask_path).convert('RGB'))
+            mask = self.transform(Image.open(mask_path))
             with open(reward_path, 'r') as f:
                 reward = float(f.read().strip())
         except Exception as e:
@@ -50,7 +50,7 @@ class ISICDataset(Dataset):
         }
 
 
-def get_data_loader(batch_size=2, shuffle=True):
+def get_data_loader(batch_size=4, shuffle=True):
     # 路径
     train_dir = os.path.join(root_path, 'data/processed/train/resized')
     test_dir = os.path.join(root_path, 'data/processed/test/resized')
@@ -65,11 +65,3 @@ def get_data_loader(batch_size=2, shuffle=True):
     test_dataloader = DataLoader(
         test_dataset, batch_size=batch_size, shuffle=shuffle)
     return train_dataloader, test_dataloader
-
-
-def get_mcts_test_loader(batch_size=1, shuffle=False):
-    test_dir = os.path.join(root_path, 'data/processed/test/resized')
-    test_dataset = ISICDataset(image_dir=test_dir, per_image_mask=1)
-    test_dataloader = DataLoader(
-        test_dataset, batch_size=batch_size, shuffle=shuffle)
-    return test_dataloader

@@ -6,7 +6,7 @@ import torch
 from PIL import Image
 from tqdm import tqdm
 from models.model import RewardPredictionModel
-from data.loader import get_data_loader, get_mcts_test_loader
+from data.mcts_loader import get_mcts_test_loader
 from utils.helpers import get_root_path, setup_seed, load_sam, device
 setup_seed()
 sam = load_sam()
@@ -72,8 +72,7 @@ class State:
         new_masks, _, _ = global_info.predictor.predict(
             points, labels, multimask_output=False)
         # 使用 RewardModel 计算 reward
-        mask = torch.Tensor(new_masks[0]).unsqueeze(
-            0).repeat(3, 1, 1).unsqueeze(0).to(device)
+        mask = torch.Tensor(new_masks[0]).unsqueeze(0).to(device)
         with torch.no_grad():
             reward = global_info.reward_model(global_info.batch_image, mask)
             return reward.item()
@@ -160,9 +159,8 @@ def load_model():
     model_path = os.path.join(
         root_path, 'results/models/2025-01-13_23-48-35.pth')
     model = RewardPredictionModel().to(device)
-    # with open(model_path) as f:
-    #     model_path = f'reward_model/checkpoint/{f.read()}'  # 模型权重文件路径
     model.load_state_dict(torch.load(model_path, weights_only=True))
+    # model = torch.load(model_path).to(device)
     model.eval()
     return model
 
@@ -206,7 +204,8 @@ def sam_seg_cal_reward(predictor, points, labels, ground_truth, image_id):
 
     # 保存分割结果和 mask
     new_mask_image = (new_mask * 255).astype(np.uint8)
-    ground_truth_image = (ground_truth * 255).astype(np.uint8)
+    ground_truth_image = (ground_truth[0] * 255).astype(np.uint8)
+    print(new_mask_image.shape, ground_truth_image.shape)
     combined_image = np.concatenate(
         (new_mask_image, ground_truth_image), axis=1)
     Image.fromarray(combined_image).save(result_path)
@@ -225,6 +224,7 @@ if __name__ == '__main__':
     predictor = SamPredictor(sam)  # 初始化 SAM
     for data in tqdm(test_loader, desc='Test Image', position=0):
         image = data['image'][0].to(device)
+        mask = data['mask'][0].to(device)
         initial_state = State()
         root = Node(initial_state)
         model_path = os.path.join(
@@ -239,11 +239,8 @@ if __name__ == '__main__':
         reward = best_node.state.get_reward(global_info)
         labels = np.ones(len(points)).astype(int)
         image_id = data['image_id'][0]
-        ground_truth_path = os.path.join(
-            root_path, 'data/processed/test/resized', f"{image_id}_mask_0.png")
-        ground_truth = Image.open(ground_truth_path).convert('L')
         sam_seg_cal_reward(predictor=predictor, points=points,
-                           labels=labels, ground_truth=np.array(ground_truth), image_id=image_id,)
+                           labels=labels, ground_truth=mask.cpu().numpy(), image_id=image_id,)
         # 将最佳点和奖励写入文件
         results_dir = os.path.join('results', 'mcts')
         os.makedirs(results_dir, exist_ok=True)
