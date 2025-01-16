@@ -13,10 +13,10 @@ root_path = get_root_path()
 
 def train():
     log_writer = get_log_writer()
-    lr = 1e-5
+    lr = 1e-2
     # 初始化模型、损失函数和优化器
     model = RewardPredictionModel().to(device)
-    criterion = nn.HuberLoss()  # 可以使用BCELoss，如果目标是分类
+    criterion = nn.MSELoss()  # 可以使用BCELoss，如果目标是分类
     optimizer = optim.Adam(model.parameters(), lr=lr)
     # 训练循环
     epochs = 30
@@ -27,7 +27,7 @@ def train():
         model.train()
         train_loss = 0.0
         train_steps = 0
-        for batch in tqdm(train_dataloader, desc=f'Epoch {epoch + 1}', ncols=100):
+        for batch in tqdm(train_dataloader, desc=f'Epoch {epoch + 1}'):
             image = batch['image'].to(device)
             mask = batch['mask'].to(device)
             reward = batch['reward'].float().to(device)
@@ -63,8 +63,7 @@ def train():
         print(
             f"Epoch [{epoch + 1}/{epochs}], Train Loss:{train_loss / train_steps}, Test Loss: {test_loss / test_steps}")
 
-        if (epoch + 1) % 5 == 0:
-            torch.save(model.state_dict(), os.path.join(
+        torch.save(model.state_dict(), os.path.join(
                 root_path, 'results/models', f'{datetime.now().strftime("%Y-%m-%d_%H-%M-%S")}.pth'))
     latest_model_name = f'{datetime.now().strftime("%Y-%m-%d_%H-%M-%S")}.pth'
     torch.save(model.state_dict(), os.path.join(

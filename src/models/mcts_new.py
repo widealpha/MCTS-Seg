@@ -3,7 +3,7 @@ import numpy as np
 from collections import defaultdict
 from segment_anything import sam_model_registry, SamPredictor
 import torch
-from PIL import Image
+from PIL import Image, ImageDraw
 from tqdm import tqdm
 from models.model import RewardPredictionModel
 from data.mcts_loader import get_mcts_test_loader
@@ -157,7 +157,7 @@ class MCTS:
 
 def load_model():
     model_path = os.path.join(
-        root_path, 'results/models/2025-01-15_14-24-59.pth')
+        root_path, 'results/models/2025-01-15_17-24-56.pth')
     model = RewardPredictionModel().to(device)
     model.load_state_dict(torch.load(model_path, weights_only=True))
     # model = torch.load(model_path).to(device)
@@ -184,14 +184,14 @@ def sam_seg_cal_reward(predictor, points, labels, ground_truth, image_id):
     :param predictor: SAM 预测器
     :param points: 分割点
     :param labels: 分割标签
-    :param image: 输入图像
-    :param ground_truth: ground truth 掩码
+    :param image: 输入图像(C, H, W)
+    :param ground_truth: ground truth 掩码(H, W)
     :param image_id: 图像 ID
     """
     # 使用 SAM 生成新的 mask
     new_masks, _, _ = predictor.predict(points, labels, multimask_output=False)
-    new_mask = new_masks[0]
-
+    new_mask = new_masks[0] # 取第一个 mask (H, W)
+    
     # 计算 IOU 作为 reward
     iou = calculate_iou(new_mask, ground_truth)
 
@@ -204,15 +204,24 @@ def sam_seg_cal_reward(predictor, points, labels, ground_truth, image_id):
 
     # 保存分割结果和 mask
     new_mask_image = (new_mask * 255).astype(np.uint8)
-    ground_truth_image = (ground_truth[0] * 255).astype(np.uint8)
+    ground_truth_image = (ground_truth * 255).astype(np.uint8)
     combined_image = np.concatenate(
         (new_mask_image, ground_truth_image), axis=1)
     Image.fromarray(combined_image).save(result_path)
     Image.fromarray(new_mask_image).save(mask_path)
-
+        # 将 points 绘制在 mask 上并保存
+    mask_with_points = Image.fromarray(ground_truth_image).convert("RGB")
+    draw = ImageDraw.Draw(mask_with_points)
+    radius = 5
+    for idx, point in enumerate(points):
+        x, y = point
+        draw.ellipse((x - radius, y - radius, x + radius, y + radius), outline='red', width=2)
+        draw.text((x, y), str(idx), fill='red')
+    mask_with_points_path = os.path.join(results_dir, f'{image_id}_mask_with_points.png')
+    mask_with_points.save(mask_with_points_path)
     # 保存 IOU
     with open(iou_path, 'w') as f:
-        f.write(f'IOU: {iou}\n')
+        f.write(f'{iou}')
 
     return iou
 
@@ -221,25 +230,28 @@ def sam_seg_cal_reward(predictor, points, labels, ground_truth, image_id):
 if __name__ == '__main__':
     test_loader = get_mcts_test_loader()
     predictor = SamPredictor(sam)  # 初始化 SAM
-    for data in tqdm(test_loader, desc='Test Image', position=0):
+    for data in tqdm(test_loader, desc='Test Image', position=0, leave=True):
         image = data['image'][0].to(device)
         mask = data['mask'][0].to(device)
         initial_state = State()
         root = Node(initial_state)
         model_path = os.path.join(
-            root_path, 'results/models/2025-01-13_23-48-35.pth')
+            root_path, 'results/models/2025-01-15_16-04-47.pth')
         reward_model = load_model()
         # 初始化 RewardModel
         global_info = GlobalInfo(
             image=image, predictor=predictor, reward_model=reward_model, image_shape=image.shape[1:])
-        mcts = MCTS(root, global_info)
-        best_node = mcts.search(num_simulations=20)
+        max_points = 2
+        best_node = root
+        for _ in range(max_points):
+            mcts = MCTS(best_node, global_info)
+            best_node = mcts.search(num_simulations=10)
         points = np.array(best_node.state.all_points(global_info))
         reward = best_node.state.get_reward(global_info)
         labels = np.ones(len(points)).astype(int)
         image_id = data['image_id'][0]
         sam_seg_cal_reward(predictor=predictor, points=points,
-                           labels=labels, ground_truth=mask.cpu().numpy(), image_id=image_id,)
+                           labels=labels, ground_truth=mask[0].cpu().numpy(), image_id=image_id,)
         # 将最佳点和奖励写入文件
         results_dir = os.path.join('results', 'mcts')
         os.makedirs(results_dir, exist_ok=True)

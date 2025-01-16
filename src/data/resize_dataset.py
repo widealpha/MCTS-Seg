@@ -10,6 +10,7 @@ from utils.helpers import get_root_path
 
 root_path = get_root_path()
 
+
 def extract_mask_id(mask_file):
     '''从文件路径中提取符合 mask_\d+ 形式的 mask_id'''
     match = re.search(r'mask_\d+', os.path.basename(mask_file))
@@ -31,6 +32,7 @@ def calculate_iou(mask, ground_truth):
     iou = intersection / union if union != 0 else 0
     return iou
 
+
 def rewards_function(mask, ground_truth):
     """
     计算 mask 和 ground_truth 之间的 IOU，并根据散点数量降低奖励。
@@ -41,7 +43,7 @@ def rewards_function(mask, ground_truth):
     """
     mask = mask.astype(bool)
     ground_truth = ground_truth.astype(bool)
-    
+
     # 计算 IOU
     iou = calculate_iou(mask, ground_truth)
 
@@ -79,7 +81,8 @@ def resize_and_compare_images(in_dir, out_dir, raw_dir, size=(1024, 1024)):
     raw_image_dir = os.path.join(root_path, raw_dir)
     os.makedirs(output_dir, exist_ok=True)
 
-    image_files = [f for f in os.listdir(input_dir) if f.endswith('.png') and '_mask_' in f]
+    image_files = [f for f in os.listdir(
+        input_dir) if f.endswith('.png') and '_mask_' in f]
     image_files.sort()
     for image_file in tqdm(image_files, desc="Resize and reward images"):
         image_id = extract_image_id(image_file)
@@ -111,17 +114,25 @@ def resize_and_compare_images(in_dir, out_dir, raw_dir, size=(1024, 1024)):
         reward = rewards_function(mask, ground_truth)
 
         output_image_path = os.path.join(output_dir, image_file)
-        output_reward_path = os.path.join(output_dir, f"{image_id}_{mask_id}_reward.txt")
+        output_reward_path = os.path.join(
+            output_dir, f"{image_id}_{mask_id}_reward.txt")
         output_raw_image_path = os.path.join(output_dir, f"{image_id}_raw.jpg")
 
         image.save(output_image_path)
         raw_image.save(output_raw_image_path)
         with open(output_reward_path, 'w') as f:
             f.write(f"{reward}\n")
+            
+        iou = calculate_iou(mask, ground_truth)
+        # Save IoU result
+        iou_result_path = os.path.join(output_dir, f"{image_id}_{mask_id}_iou.txt")
+        with open(iou_result_path, 'w') as f:
+            f.write(f"{iou}\n")
 
 
 if __name__ == '__main__':
-    in_dir = 'data/processed/train/expanded'
-    out_dir = 'data/processed/train/resized'
-    raw_dir = 'data/raw/train/ISBI2016_ISIC/image'
+    mode = 'test'
+    in_dir = f'data/processed/{mode}/expanded'
+    out_dir = f'data/processed/{mode}/resized'
+    raw_dir = f'data/raw/{mode}/ISBI2016_ISIC/image'
     resize_and_compare_images(in_dir, out_dir, raw_dir, (1024, 1024))
