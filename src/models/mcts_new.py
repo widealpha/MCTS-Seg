@@ -17,6 +17,8 @@ class GlobalInfo:
     def __init__(self, image, predictor: SamPredictor, reward_model: RewardPredictionModel, image_shape=(1024, 1024)):
         self.image = image.permute(1, 2, 0).cpu().numpy()
         self.batch_image = image.unsqueeze(0)
+        self.batch_size = 8
+        self.batch_image_tensor = image.unsqueeze(0).repeat(self.batch_size, 1, 1, 1).to(device)
         self.width = image_shape[0]
         self.height = image_shape[1]
         self.predictor = predictor
@@ -29,16 +31,28 @@ class State:
         self.action = action
         self.taken_action = taken_action
         self.grid_size = grid_size
+        self.reward = None
 
     def get_legal_actions(self):
         if len(self.action) >= 3:
             return []
         actions = []
-        for i in range(self.grid_size ** 2):
+        for i in range(len(self.action)):
+            for j in range(self.grid_size ** 2):
+                new_action = self.action[:i]
+                new_action.append(j)
+                actions.append(new_action)
+        for j in range(self.grid_size ** 2):
             new_action = self.action.copy()
-            new_action.append(i)
+            new_action.append(j)
             actions.append(new_action)
-        return actions
+        # 排除 taken_action 中的部分
+        filtered_actions = []
+        for action in actions:
+            if not any(set(action) == set(taken) for taken in self.taken_action):
+                filtered_actions.append(action)
+
+        return filtered_actions
 
     def take_action(self, action):
         new_taken_action = self.taken_action.copy()
@@ -66,6 +80,8 @@ class State:
         return points
 
     def get_reward(self, global_info: GlobalInfo):
+        if (self.reward is not None):
+            return self.reward
         points = np.array(self.all_points(global_info))
         labels = np.ones(len(points)).astype(int)
         # 使用 SAM 生成新的 mask
@@ -75,7 +91,8 @@ class State:
         mask = torch.Tensor(new_masks[0]).unsqueeze(0).unsqueeze(0).to(device)
         with torch.no_grad():
             reward = global_info.reward_model(global_info.batch_image, mask)
-            return reward.item()
+            self.reward = reward.item()
+            return self.reward
 
 
 class Node:
@@ -127,19 +144,15 @@ class MCTS:
 
     def expand(self, node: Node):
         legal_actions = node.state.get_legal_actions()
-        best_action = None
-        best_reward = float('-inf')
-
+        all_points = []
+        all_labels = []
         for action in legal_actions:
             new_state = node.state.take_action(action)
-            reward = new_state.get_reward(self.global_info)
-            if reward > best_reward:
-                best_reward = reward
-                best_action = action
+            all_points.append(new_state.all_points(self.global_info))
+            all_labels.append(np.ones(len(all_points[-1])).astype(int))
+        batch_reward_idx = self.get_batch_reward_idx(all_points, all_labels)
 
-        if best_action is not None:
-            return node.add_child(node.state.take_action(best_action))
-        return node
+        return node.add_child(node.state.take_action(legal_actions[batch_reward_idx]))
 
     def simulate(self, node: Node):
         current_state = node.state
@@ -153,6 +166,39 @@ class MCTS:
         while node is not None:
             node.update(reward)
             node = node.parent
+
+    def get_batch_reward_idx(self, points, labels):
+        batch_size = self.global_info.batch_size 
+        total_samples = len(points)
+        num_to_pad = batch_size - total_samples % batch_size  # 计算需要补足的数量
+    
+        # 如果需要补足样本
+        if num_to_pad > 0:
+            last_point = points[-1]
+            last_label = labels[-1]
+            points.extend([last_point] * num_to_pad)
+            labels.extend([last_label] * num_to_pad)
+        torch_points = torch.Tensor(np.array(points)).to(device)
+        torch_labels = torch.Tensor(np.array(labels)).to(device)
+        batch_size = global_info.batch_size
+        total_samples = torch_points.shape[0]
+        rewards_list = []
+
+        for i in range(0, len(points), batch_size):
+            batch_points = torch_points[i:i + batch_size]
+            batch_labels = torch_labels[i:i + batch_size]
+
+            mask, *_ = self.global_info.predictor.predict_torch(
+                batch_points, batch_labels, multimask_output=False
+            )
+            with torch.no_grad():
+                rewards = global_info.reward_model(self.global_info.batch_image_tensor, mask)
+                rewards_list.append(rewards)
+
+        # 合并所有小批次的奖励
+        all_rewards = torch.cat(rewards_list, dim=0)
+        # 返回所有奖励中最大的元素的索引
+        return all_rewards.argmax().item()
 
 
 def load_model():
@@ -190,8 +236,8 @@ def sam_seg_cal_reward(predictor, points, labels, ground_truth, image_id):
     """
     # 使用 SAM 生成新的 mask
     new_masks, _, _ = predictor.predict(points, labels, multimask_output=False)
-    new_mask = new_masks[0] # 取第一个 mask (H, W)
-    
+    new_mask = new_masks[0]  # 取第一个 mask (H, W)
+
     # 计算 IOU 作为 reward
     iou = calculate_iou(new_mask, ground_truth)
 
@@ -209,15 +255,25 @@ def sam_seg_cal_reward(predictor, points, labels, ground_truth, image_id):
         (new_mask_image, ground_truth_image), axis=1)
     Image.fromarray(combined_image).save(result_path)
     Image.fromarray(new_mask_image).save(mask_path)
-        # 将 points 绘制在 mask 上并保存
+    # 将 points 绘制在 mask 上并保存
     mask_with_points = Image.fromarray(ground_truth_image).convert("RGB")
     draw = ImageDraw.Draw(mask_with_points)
-    radius = 5
+    radius = 6
     for idx, point in enumerate(points):
         x, y = point
-        draw.ellipse((x - radius, y - radius, x + radius, y + radius), outline='red', width=2)
-        draw.text((x, y), str(idx), fill='red')
-    mask_with_points_path = os.path.join(results_dir, f'{image_id}_mask_with_points.png')
+        draw.ellipse((x - radius, y - radius, x + radius,
+                     y + radius), outline='red', width=2)
+
+        # 使用 textbbox 计算文本边界框大小
+        text = str(idx)
+        bbox = draw.textbbox((0, 0), text, font=None)
+        text_size = (bbox[2] - bbox[0], bbox[3] - bbox[1])
+
+        text_x = x - text_size[0] // 2
+        text_y = y - text_size[1] // 2
+        draw.text((text_x, text_y), text, fill='red')
+    mask_with_points_path = os.path.join(
+        results_dir, f'{image_id}_mask_with_points.png')
     mask_with_points.save(mask_with_points_path)
     # 保存 IOU
     with open(iou_path, 'w') as f:

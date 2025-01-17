@@ -4,16 +4,16 @@ from tqdm import tqdm
 from datetime import datetime
 from models.model import RewardPredictionModel
 from data.loader import get_data_loader
-from utils.helpers import get_log_writer, get_root_path, device
+from utils.helpers import get_log_writer, get_root_path, device, setup_seed
 from torch import nn, optim
 import os
 
 root_path = get_root_path()
-
+setup_seed()
 
 def train():
     log_writer = get_log_writer()
-    lr = 1e-2
+    lr = 1e-3
     # 初始化模型、损失函数和优化器
     model = RewardPredictionModel().to(device)
     criterion = nn.MSELoss()  # 可以使用BCELoss，如果目标是分类

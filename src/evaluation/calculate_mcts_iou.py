@@ -36,7 +36,7 @@ def save_average_iou(average_iou, results_dir):
 
 
 if __name__ == '__main__':
-    results_dir = os.path.join(root_path, 'results/mcts-3point')
+    results_dir = os.path.join(root_path, 'results/mcts-3points')
     output_dir = os.path.join(root_path, 'results/average_iou')
 
     iou_values = read_iou_files(results_dir)
