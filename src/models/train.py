@@ -13,10 +13,10 @@ setup_seed()
 
 def train():
     log_writer = get_log_writer()
-    lr = 1e-3
+    lr = 1e-2
     # 初始化模型、损失函数和优化器
     model = RewardPredictionModel().to(device)
-    criterion = nn.MSELoss()  # 可以使用BCELoss，如果目标是分类
+    criterion = nn.L1Loss()  # 可以使用BCELoss，如果目标是分类
     optimizer = optim.Adam(model.parameters(), lr=lr)
     # 训练循环
     epochs = 30
@@ -73,8 +73,8 @@ def train():
     log_writer.add_text('Model/lr', f'{lr}')
     log_writer.add_text('Model/criterion', f'{criterion}')
     log_writer.add_text(f'Model/model', f'{model}')
-    dummy_input = (torch.randn(1, 256, 64, 64).to(device),
-                   torch.randn(1, 256, 64, 64).to(device))
+    dummy_input = (torch.randn(1, 3, 1024, 1024).to(device),
+                   torch.randn(1, 1, 1024, 1024).to(device))
     log_writer.add_graph(model, input_to_model=dummy_input)
     log_writer.close()
 
