@@ -13,7 +13,7 @@ setup_seed()
 
 def train(checkpoint_path=None):
     log_writer = get_log_writer()
-    lr = 1e-3
+    lr = 1e-4
     # 初始化模型、损失函数和优化器
     model = RewardPredictionModel().to(device)
     if checkpoint_path:

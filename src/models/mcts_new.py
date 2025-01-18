@@ -38,19 +38,11 @@ class State:
             return []
         actions = []
         for i in range(len(self.action)):
-            for j in range(1, self.grid_size ** 2 + 1):
+            for j in range(self.grid_size ** 2):
                 new_action = self.action[:i]
                 new_action.append(j)
                 actions.append(new_action)
-            for j in range(-self.grid_size ** 2, 0):
-                new_action = self.action[:i]
-                new_action.append(j)
-                actions.append(new_action)
-        for j in range(1, self.grid_size ** 2 + 1):
-            new_action = self.action.copy()
-            new_action.append(j)
-            actions.append(new_action)
-        for j in range(-self.grid_size ** 2, 0):
+        for j in range(self.grid_size ** 2):
             new_action = self.action.copy()
             new_action.append(j)
             actions.append(new_action)
@@ -71,9 +63,10 @@ class State:
         base_x = 0
         base_y = 0
         for i in range(len(action)):
-            abs_action = abs(action[i]) - 1
-            base_x += image_width // self.grid_size * (abs_action // self.grid_size)
-            base_y += image_height // self.grid_size * (abs_action % self.grid_size)
+            base_x += image_width // self.grid_size * \
+                (action[i] // self.grid_size)
+            base_y += image_height // self.grid_size * \
+                (action[i] % self.grid_size)
             image_width //= self.grid_size
             image_height //= self.grid_size
         return (base_x + image_width // 2, base_y + image_height // 2)
@@ -90,9 +83,10 @@ class State:
         if (self.reward is not None):
             return self.reward
         points = np.array(self.all_points(global_info))
-        labels = np.array([1 if a > 0 else 0 for a in self.taken_action]).astype(int)
+        labels = np.ones(len(points)).astype(int)
         # 使用 SAM 生成新的 mask
-        new_masks, _, _ = global_info.predictor.predict(points, labels, multimask_output=False)
+        new_masks, _, _ = global_info.predictor.predict(
+            points, labels, multimask_output=False)
         # 使用 RewardModel 计算 reward
         mask = torch.Tensor(new_masks[0]).unsqueeze(0).unsqueeze(0).to(device)
         with torch.no_grad():
@@ -155,7 +149,7 @@ class MCTS:
         for action in legal_actions:
             new_state = node.state.take_action(action)
             all_points.append(new_state.all_points(self.global_info))
-            all_labels.append(np.array([1 if a > 0 else 0 for a in new_state.taken_action]).astype(int))
+            all_labels.append(np.ones(len(all_points[-1])).astype(int))
         batch_reward_idx = self.get_batch_reward_idx(all_points, all_labels)
 
         return node.add_child(node.state.take_action(legal_actions[batch_reward_idx]))
@@ -209,7 +203,7 @@ class MCTS:
 
 def load_model():
     model_path = os.path.join(
-        root_path, 'results/models/2025-01-15_17-24-56.pth')
+        root_path, 'results/models/2025-01-18_15-31-04.pth')
     model = RewardPredictionModel().to(device)
     model.load_state_dict(torch.load(model_path, weights_only=True))
     # model = torch.load(model_path).to(device)
@@ -265,10 +259,10 @@ def sam_seg_cal_reward(predictor, points, labels, ground_truth, image_id):
     mask_with_points = Image.fromarray(ground_truth_image).convert("RGB")
     draw = ImageDraw.Draw(mask_with_points)
     radius = 6
-    for idx, (point, label) in enumerate(zip(points, labels)):
+    for idx, point in enumerate(points):
         x, y = point
-        color = 'red' if label == 1 else 'green'
-        draw.ellipse((x - radius, y - radius, x + radius, y + radius), outline=color, width=2)
+        draw.ellipse((x - radius, y - radius, x + radius,
+                     y + radius), outline='red', width=2)
 
         # 使用 textbbox 计算文本边界框大小
         text = str(idx)
@@ -277,7 +271,7 @@ def sam_seg_cal_reward(predictor, points, labels, ground_truth, image_id):
 
         text_x = x - text_size[0] // 2
         text_y = y - text_size[1] // 2
-        draw.text((text_x, text_y), text, fill=color)
+        draw.text((text_x, text_y), text, fill='red')
     mask_with_points_path = os.path.join(
         results_dir, f'{image_id}_mask_with_points.png')
     mask_with_points.save(mask_with_points_path)
@@ -310,7 +304,7 @@ if __name__ == '__main__':
             best_node = mcts.search(num_simulations=40)
         points = np.array(best_node.state.all_points(global_info))
         reward = best_node.state.get_reward(global_info)
-        labels = np.array([1 if a > 0 else 0 for a in best_node.state.taken_action]).astype(int)
+        labels = np.ones(len(points)).astype(int)
         image_id = data['image_id'][0]
         sam_seg_cal_reward(predictor=predictor, points=points,
                            labels=labels, ground_truth=mask[0].cpu().numpy(), image_id=image_id,)
