@@ -11,12 +11,15 @@ import os
 root_path = get_root_path()
 setup_seed()
 
-def train():
+def train(checkpoint_path=None):
     log_writer = get_log_writer()
-    lr = 1e-2
+    lr = 1e-3
     # 初始化模型、损失函数和优化器
     model = RewardPredictionModel().to(device)
-    criterion = nn.L1Loss()  # 可以使用BCELoss，如果目标是分类
+    if checkpoint_path:
+        model.load_state_dict(torch.load(checkpoint_path))
+        print(f"Loaded model from {checkpoint_path}")
+    criterion = nn.MSELoss()  # 修改为分类损失函数
     optimizer = optim.Adam(model.parameters(), lr=lr)
     # 训练循环
     epochs = 30
@@ -30,7 +33,7 @@ def train():
         for batch in tqdm(train_dataloader, desc=f'Epoch {epoch + 1}'):
             image = batch['image'].to(device)
             mask = batch['mask'].to(device)
-            reward = batch['reward'].float().to(device)
+            reward = batch['reward'].float().unsqueeze(1).to(device)
 
             with torch.amp.autocast(device):
                 # 将数据传递给模型
@@ -53,7 +56,7 @@ def train():
             for batch in test_dataloader:
                 image = batch['image'].to(device)
                 mask = batch['mask'].to(device)
-                reward = batch['reward'].float().to(device)
+                reward = batch['reward'].float().unsqueeze(1).to(device)
 
                 reward_pred = model(image, mask)
                 loss = criterion(reward_pred, reward)
@@ -78,4 +81,4 @@ def train():
 
 
 if __name__ == '__main__':
-    train()
+    train(checkpoint_path=None)

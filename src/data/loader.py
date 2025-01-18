@@ -31,7 +31,7 @@ class ISICDataset(Dataset):
         mask_id = f'{image_id}_mask_{idx % self.per_image_mask}'
         image_path = os.path.join(self.image_dir, f"{image_id}_raw.jpg")
         mask_path = os.path.join(self.image_dir, f"{mask_id}.png")
-        reward_path = os.path.join(self.image_dir, f"{mask_id}_reward.txt")
+        reward_path = os.path.join(self.image_dir, f"{mask_id}_normalized_reward.txt")
 
         try:
             image = self.transform(Image.open(image_path))
@@ -50,7 +50,7 @@ class ISICDataset(Dataset):
         }
 
 
-def get_data_loader(batch_size=4, shuffle=True, test_batch_size=8, test_shuffle=False):
+def get_data_loader(batch_size=2, shuffle=True, test_batch_size=4, test_shuffle=False):
     # 路径
     train_dir = os.path.join(root_path, 'data/processed/train/resized')
     test_dir = os.path.join(root_path, 'data/processed/test/resized')
