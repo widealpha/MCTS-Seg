@@ -68,8 +68,6 @@ def train():
     latest_model_name = f'{datetime.now().strftime("%Y-%m-%d_%H-%M-%S")}.pth'
     torch.save(model.state_dict(), os.path.join(
             root_path, 'results/models', latest_model_name))
-    # test(model, log_writer, test_dataloader, 'Reward')  # 查看测试集分布
-    # test(model, log_writer, train_dataloader, 'Reward-Train')  # 查看训练集分布
     log_writer.add_text('Model/lr', f'{lr}')
     log_writer.add_text('Model/criterion', f'{criterion}')
     log_writer.add_text(f'Model/model', f'{model}')

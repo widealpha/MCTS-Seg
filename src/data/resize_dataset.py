@@ -55,19 +55,55 @@ def rewards_function(mask, ground_truth):
     # 将品质按照不同区间划分成 12 档，将奖励映射到 0-11 之间
     reward = max(adjusted_iou, 0)  # 确保奖励值不为负
 
-    if reward >= 0.8:
-        reward = 8 + int((reward - 0.8) / 0.05)
-    elif reward >= 0.5:
-        reward = 4 + int((reward - 0.5) / 0.075)
-    else:
-        reward = int(reward / 0.125)
+    # if reward >= 0.8:
+    #     reward = 8 + int((reward - 0.8) / 0.05)
+    # elif reward >= 0.5:
+    #     reward = 4 + int((reward - 0.5) / 0.075)
+    # else:
+    #     reward = int(reward / 0.125)
 
-    reward = min(reward, 11)  # 确保奖励值不超过 11
+    # reward = min(reward, 11)  # 确保奖励值不超过 11
 
     return reward
 
 
-def resize_and_compare_images(in_dir, out_dir, raw_dir, size=(1024, 1024)):
+def normalize_rewards(rewards, output_dir):
+    # 提取奖励值
+    reward_values = [r[0] for r in rewards]
+    
+    # 计算全局的均值和标准差
+    mean_reward = np.mean(reward_values)
+    std_reward = np.std(reward_values)
+
+    # 对所有 reward 进行归一化并保存
+    normalized_rewards = [(r - mean_reward) / std_reward for r in reward_values]
+    for (reward, image_id, mask_id), norm_reward in zip(rewards, normalized_rewards):
+        norm_reward_path = os.path.join(output_dir, f"{image_id}_{mask_id}_normalized_reward.txt")
+        with open(norm_reward_path, 'w') as f:
+            f.write(f"{norm_reward}\n")
+
+    # 保存全局的均值和标准差
+    stats_path = os.path.join(output_dir, "reward_stats.txt")
+    with open(stats_path, 'w') as f:
+        f.write(f"Mean: {mean_reward}\n")
+        f.write(f"Std: {std_reward}\n")
+
+    return mean_reward, std_reward
+
+
+def normalize_test_rewards(rewards, train_mean, train_std, output_dir):
+    # 提取奖励值
+    reward_values = [r[0] for r in rewards]
+    
+    # 使用训练集的均值和标准差对测试集的奖励进行归一化
+    normalized_rewards = [(r - train_mean) / train_std for r in reward_values]
+    for (reward, image_id, mask_id), norm_reward in zip(rewards, normalized_rewards):
+        norm_reward_path = os.path.join(output_dir, f"{image_id}_{mask_id}_normalized_reward.txt")
+        with open(norm_reward_path, 'w') as f:
+            f.write(f"{norm_reward}\n")
+
+
+def resize_and_compare_images(in_dir, out_dir, raw_dir, size=(1024, 1024), mode='train', train_mean=None, train_std=None):
     """
     获取 in_dir 目录下的所有图片，并将它们处理到统一的大小，然后与 mask_0 进行对比计算奖励。
     同时从 raw_dir 中获取原始图像并进行相同的调整。
@@ -75,11 +111,16 @@ def resize_and_compare_images(in_dir, out_dir, raw_dir, size=(1024, 1024)):
     :param out_dir: 输出图片目录
     :param raw_dir: 原始图片目录
     :param size: 处理后的图片大小
+    :param mode: 模式（train 或 test）
+    :param train_mean: 训练集的均值（仅在测试模式下使用）
+    :param train_std: 训练集的标准差（仅在测试模式下使用）
     """
     input_dir = os.path.join(root_path, in_dir)
     output_dir = os.path.join(root_path, out_dir)
     raw_image_dir = os.path.join(root_path, raw_dir)
     os.makedirs(output_dir, exist_ok=True)
+
+    rewards = []
 
     image_files = [f for f in os.listdir(
         input_dir) if f.endswith('.png') and '_mask_' in f]
@@ -112,6 +153,7 @@ def resize_and_compare_images(in_dir, out_dir, raw_dir, size=(1024, 1024)):
         ground_truth = np.array(ground_truth)
 
         reward = rewards_function(mask, ground_truth)
+        rewards.append((reward, image_id, mask_id))
 
         output_image_path = os.path.join(output_dir, image_file)
         output_reward_path = os.path.join(
@@ -122,17 +164,30 @@ def resize_and_compare_images(in_dir, out_dir, raw_dir, size=(1024, 1024)):
         raw_image.save(output_raw_image_path)
         with open(output_reward_path, 'w') as f:
             f.write(f"{reward}\n")
-            
+
         iou = calculate_iou(mask, ground_truth)
         # Save IoU result
-        iou_result_path = os.path.join(output_dir, f"{image_id}_{mask_id}_iou.txt")
+        iou_result_path = os.path.join(
+            output_dir, f"{image_id}_{mask_id}_iou.txt")
         with open(iou_result_path, 'w') as f:
             f.write(f"{iou}\n")
 
+    if mode == 'train':
+        train_mean, train_std = normalize_rewards(rewards, out_dir)
+        return train_mean, train_std
+    elif mode == 'test':
+        normalize_test_rewards(rewards, train_mean, train_std, out_dir)
+
 
 if __name__ == '__main__':
-    mode = 'test'
-    in_dir = f'data/processed/{mode}/expanded'
-    out_dir = f'data/processed/{mode}/resized'
-    raw_dir = f'data/raw/{mode}/ISBI2016_ISIC/image'
-    resize_and_compare_images(in_dir, out_dir, raw_dir, (1024, 1024))
+    train_mode = 'train'
+    test_mode = 'test'
+    train_in_dir = f'data/processed/{train_mode}/expanded'
+    train_out_dir = f'data/processed/{train_mode}/resized'
+    train_raw_dir = f'data/raw/{train_mode}/ISBI2016_ISIC/image'
+    test_in_dir = f'data/processed/{test_mode}/expanded'
+    test_out_dir = f'data/processed/{test_mode}/resized'
+    test_raw_dir = f'data/raw/{test_mode}/ISBI2016_ISIC/image'
+
+    train_mean, train_std = resize_and_compare_images(train_in_dir, train_out_dir, train_raw_dir, (1024, 1024), train_mode)
+    resize_and_compare_images(test_in_dir, test_out_dir, test_raw_dir, (1024, 1024), test_mode, train_mean, train_std)

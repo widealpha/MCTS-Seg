@@ -7,7 +7,7 @@ from unet_model import UNet
 class RewardPredictionModel(nn.Module):
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
-        self.unet = UNet(n_channels=4, n_classes=1)  # 修改输入通道数为4
+        self.unet = UNet(n_channels=4, n_classes=1)
         # 定义卷积层
         self.conv = nn.Conv2d(in_channels=1, out_channels=8, kernel_size=3, stride=2, padding=1)
         self.conv1 = nn.Conv2d(in_channels=8, out_channels=16, kernel_size=3, stride=2, padding=1)

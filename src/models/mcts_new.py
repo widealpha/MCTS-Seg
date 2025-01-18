@@ -17,7 +17,7 @@ class GlobalInfo:
     def __init__(self, image, predictor: SamPredictor, reward_model: RewardPredictionModel, image_shape=(1024, 1024)):
         self.image = image.permute(1, 2, 0).cpu().numpy()
         self.batch_image = image.unsqueeze(0)
-        self.batch_size = 8
+        self.batch_size = 4
         self.batch_image_tensor = image.unsqueeze(0).repeat(self.batch_size, 1, 1, 1).to(device)
         self.width = image_shape[0]
         self.height = image_shape[1]
@@ -27,7 +27,7 @@ class GlobalInfo:
 
 
 class State:
-    def __init__(self, taken_action=[], action=[], grid_size: int = 8):
+    def __init__(self, taken_action=[], action=[], grid_size: int = 4):
         self.action = action
         self.taken_action = taken_action
         self.grid_size = grid_size
@@ -297,11 +297,11 @@ if __name__ == '__main__':
         # 初始化 RewardModel
         global_info = GlobalInfo(
             image=image, predictor=predictor, reward_model=reward_model, image_shape=image.shape[1:])
-        max_points = 2
+        max_points = 3
         best_node = root
         for _ in range(max_points):
             mcts = MCTS(best_node, global_info)
-            best_node = mcts.search(num_simulations=10)
+            best_node = mcts.search(num_simulations=40)
         points = np.array(best_node.state.all_points(global_info))
         reward = best_node.state.get_reward(global_info)
         labels = np.ones(len(points)).astype(int)
