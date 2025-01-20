@@ -63,7 +63,7 @@ class State:
     def take_action(self, action):
         new_taken_action = self.taken_action.copy()
         new_taken_action.append(action)
-        return State(taken_action=new_taken_action, action=action, grid_size=self.grid_size)
+        return State(taken_action=new_taken_action, action=action)
 
     def action2point(self, action, image_width: int, image_height: int):
         base_x = 0
