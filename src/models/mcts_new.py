@@ -1,3 +1,4 @@
+import math
 import os
 import numpy as np
 from collections import defaultdict
@@ -18,24 +19,28 @@ class GlobalInfo:
         self.image = image.permute(1, 2, 0).cpu().numpy()
         self.batch_image = image.unsqueeze(0)
         self.batch_size = 4
-        self.batch_image_tensor = image.unsqueeze(0).repeat(self.batch_size, 1, 1, 1).to(device)
+        self.batch_image_tensor = image.unsqueeze(
+            0).repeat(self.batch_size, 1, 1, 1).to(device)
         self.width = image_shape[0]
         self.height = image_shape[1]
         self.predictor = predictor
         self.reward_model = reward_model
         self.max_points = 5
+        self.grid_size = 4
+        self.max_depth = int(
+            math.log(min(self.width, self.height), self.grid_size))
         predictor.set_image(self.image)
 
 
 class State:
-    def __init__(self, taken_action=[], action=[], grid_size: int = 4):
+    def __init__(self, taken_action=[], action=[]):
         self.action = action
         self.taken_action = taken_action
-        self.grid_size = grid_size
+        self.grid_size = global_info.grid_size
         self.reward = None
 
     def get_legal_actions(self):
-        if len(self.action) >= 3:
+        if len(self.action) >= global_info.max_depth:
             return []
         actions = []
         for i in range(len(self.action)):
@@ -169,10 +174,10 @@ class MCTS:
             node = node.parent
 
     def get_batch_reward_idx(self, points, labels):
-        batch_size = self.global_info.batch_size 
+        batch_size = self.global_info.batch_size
         total_samples = len(points)
         num_to_pad = batch_size - total_samples % batch_size  # 计算需要补足的数量
-    
+
         # 如果需要补足样本
         if num_to_pad > 0:
             last_point = points[-1]
@@ -193,7 +198,8 @@ class MCTS:
                 batch_points, batch_labels, multimask_output=False
             )
             with torch.no_grad():
-                rewards = global_info.reward_model(self.global_info.batch_image_tensor, mask)
+                rewards = global_info.reward_model(
+                    self.global_info.batch_image_tensor, mask)
                 rewards_list.append(rewards)
 
         # 合并所有小批次的奖励
