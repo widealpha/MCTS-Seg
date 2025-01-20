@@ -11,6 +11,7 @@ import os
 root_path = get_root_path()
 setup_seed()
 
+
 def train(checkpoint_path=None):
     log_writer = get_log_writer()
     lr = 1e-4
@@ -22,8 +23,9 @@ def train(checkpoint_path=None):
     criterion = nn.MSELoss()  # 修改为分类损失函数
     optimizer = optim.Adam(model.parameters(), lr=lr)
     # 训练循环
-    epochs = 30
-    train_dataloader, test_dataloader = get_data_loader()
+    epochs = 50
+    train_dataloader, test_dataloader = get_data_loader(
+        batch_size=2, test_batch_size=4)
     scaler = torch.amp.GradScaler(device)
 
     for epoch in range(epochs):
@@ -48,29 +50,30 @@ def train(checkpoint_path=None):
             train_loss += loss.item()
             train_steps += 1
         log_writer.add_scalar('Loss/train', train_loss / train_steps, epoch)
-        # 评估模型在测试集上的表现
-        test_loss = 0.0
-        test_steps = 0
-        model.eval()
-        with torch.no_grad():
-            for batch in test_dataloader:
-                image = batch['image'].to(device)
-                mask = batch['mask'].to(device)
-                reward = batch['reward'].float().unsqueeze(1).to(device)
+        if (epoch + 1) % 5 == 0:
+            # 评估模型在测试集上的表现
+            test_loss = 0.0
+            test_steps = 0
+            model.eval()
+            with torch.no_grad():
+                for batch in test_dataloader:
+                    image = batch['image'].to(device)
+                    mask = batch['mask'].to(device)
+                    reward = batch['reward'].float().unsqueeze(1).to(device)
 
-                reward_pred = model(image, mask)
-                loss = criterion(reward_pred, reward)
-                test_loss += loss.item()
-                test_steps += 1
-        log_writer.add_scalar('Loss/test', test_loss / test_steps, epoch)
-        print(
-            f"Epoch [{epoch + 1}/{epochs}], Train Loss:{train_loss / train_steps}, Test Loss: {test_loss / test_steps}")
+                    reward_pred = model(image, mask)
+                    loss = criterion(reward_pred, reward)
+                    test_loss += loss.item()
+                    test_steps += 1
+            log_writer.add_scalar('Loss/test', test_loss / test_steps, epoch)
+            print(
+                f"Epoch [{epoch + 1}/{epochs}], Train Loss:{train_loss / train_steps}, Test Loss: {test_loss / test_steps}")
 
         torch.save(model.state_dict(), os.path.join(
-                root_path, 'results/models', f'{datetime.now().strftime("%Y-%m-%d_%H-%M-%S")}.pth'))
+            root_path, 'results/models', f'{datetime.now().strftime("%Y-%m-%d_%H-%M-%S")}.pth'))
     latest_model_name = f'{datetime.now().strftime("%Y-%m-%d_%H-%M-%S")}.pth'
     torch.save(model.state_dict(), os.path.join(
-            root_path, 'results/models', latest_model_name))
+        root_path, 'results/models', latest_model_name))
     log_writer.add_text('Model/lr', f'{lr}')
     log_writer.add_text('Model/criterion', f'{criterion}')
     log_writer.add_text(f'Model/model', f'{model}')
@@ -81,4 +84,6 @@ def train(checkpoint_path=None):
 
 
 if __name__ == '__main__':
-    train(checkpoint_path=None)
+    checkpoint_path = os.path.join(
+        root_path, 'results/models', '2025-01-18_15-31-04.pth')
+    train(checkpoint_path=checkpoint_path)
