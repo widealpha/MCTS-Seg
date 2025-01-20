@@ -23,6 +23,7 @@ class GlobalInfo:
         self.height = image_shape[1]
         self.predictor = predictor
         self.reward_model = reward_model
+        self.max_points = 5
         predictor.set_image(self.image)
 
 
@@ -292,12 +293,12 @@ if __name__ == '__main__':
         initial_state = State()
         root = Node(initial_state)
         model_path = os.path.join(
-            root_path, 'results/models/2025-01-15_16-04-47.pth')
+            root_path, 'results/models/2025-01-20_17-28-07.pth')
         reward_model = load_model()
         # 初始化 RewardModel
         global_info = GlobalInfo(
             image=image, predictor=predictor, reward_model=reward_model, image_shape=image.shape[1:])
-        max_points = 3
+        max_points = global_info.max_points
         best_node = root
         for _ in range(max_points):
             mcts = MCTS(best_node, global_info)
