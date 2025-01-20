@@ -50,7 +50,7 @@ def train(checkpoint_path=None):
             train_loss += loss.item()
             train_steps += 1
         log_writer.add_scalar('Loss/train', train_loss / train_steps, epoch)
-        if (epoch + 1) % 5 == 0:
+        if epoch % 5 == 0:
             # 评估模型在测试集上的表现
             test_loss = 0.0
             test_steps = 0
@@ -68,7 +68,8 @@ def train(checkpoint_path=None):
             log_writer.add_scalar('Loss/test', test_loss / test_steps, epoch)
             print(
                 f"Epoch [{epoch + 1}/{epochs}], Train Loss:{train_loss / train_steps}, Test Loss: {test_loss / test_steps}")
-
+        else:
+            print(f"Epoch [{epoch + 1}/{epochs}], Train Loss:{train_loss / train_steps}")
         torch.save(model.state_dict(), os.path.join(
             root_path, 'results/models', f'{datetime.now().strftime("%Y-%m-%d_%H-%M-%S")}.pth'))
     latest_model_name = f'{datetime.now().strftime("%Y-%m-%d_%H-%M-%S")}.pth'
