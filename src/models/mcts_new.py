@@ -296,14 +296,16 @@ if __name__ == '__main__':
     for data in tqdm(test_loader, desc='Test Image', position=0, leave=True):
         image = data['image'][0].to(device)
         mask = data['mask'][0].to(device)
-        initial_state = State()
-        root = Node(initial_state)
+    
         model_path = os.path.join(
             root_path, 'results/models/2025-01-20_17-28-07.pth')
         reward_model = load_model()
         # 初始化 RewardModel
         global_info = GlobalInfo(
             image=image, predictor=predictor, reward_model=reward_model, image_shape=image.shape[1:])
+        initial_state = State()
+        root = Node(initial_state)
+        
         max_points = global_info.max_points
         best_node = root
         for _ in range(max_points):
