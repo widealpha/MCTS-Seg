@@ -1,332 +1,324 @@
-import os
-import random
-import re
-import time
-import cv2
-import numpy as np
-import torch
-from PIL import Image
-from gym.vector.utils import spaces
-from segment_anything import sam_model_registry, SamPredictor
-
 import math
-import random
-
+import os
+import numpy as np
+from collections import defaultdict
+from segment_anything import sam_model_registry, SamPredictor
+import torch
+from PIL import Image, ImageDraw
+from tqdm import tqdm
 from models.model import RewardPredictionModel
-from utils.helpers import setup_seed, load_sam, device, calculate_iou, get_log_writer
+from data.mcts_loader import get_mcts_test_loader
+from utils.helpers import get_root_path, setup_seed, load_sam, device
 setup_seed()
 sam = load_sam()
+root_path = get_root_path()
+
+
+class GlobalInfo:
+    def __init__(self, image, predictor: SamPredictor, reward_model: RewardPredictionModel, image_shape=(1024, 1024)):
+        self.image = image.permute(1, 2, 0).cpu().numpy()
+        self.batch_image = image.unsqueeze(0)
+        self.batch_size = 4
+        self.batch_image_tensor = image.unsqueeze(
+            0).repeat(self.batch_size, 1, 1, 1).to(device)
+        self.width = image_shape[0]
+        self.height = image_shape[1]
+        self.predictor = predictor
+        self.reward_model = reward_model
+        self.max_points = 5
+        self.grid_size = 4
+        self.max_depth = int(
+            math.log(min(self.width, self.height), self.grid_size))
+        predictor.set_image(self.image)
+
+
+class State:
+    def __init__(self, taken_action=[], action=[]):
+        self.action = action
+        self.taken_action = taken_action
+        self.grid_size = global_info.grid_size
+        self.reward = None
+
+    def get_legal_actions(self):
+        if len(self.action) >= global_info.max_depth:
+            return []
+        actions = []
+        for i in range(len(self.action)):
+            for j in range(self.grid_size ** 2):
+                new_action = self.action[:i]
+                new_action.append(j)
+                actions.append(new_action)
+        for j in range(self.grid_size ** 2):
+            new_action = self.action.copy()
+            new_action.append(j)
+            actions.append(new_action)
+        # 排除 taken_action 中的部分
+        filtered_actions = []
+        for action in actions:
+            if not any(set(action) == set(taken) for taken in self.taken_action):
+                filtered_actions.append(action)
+
+        return filtered_actions
+
+    def take_action(self, action):
+        new_taken_action = self.taken_action.copy()
+        new_taken_action.append(action)
+        return State(taken_action=new_taken_action, action=action)
+
+    def action2point(self, action, image_width: int, image_height: int):
+        base_x = 0
+        base_y = 0
+        for i in range(len(action)):
+            base_x += image_width // self.grid_size * \
+                (action[i] // self.grid_size)
+            base_y += image_height // self.grid_size * \
+                (action[i] % self.grid_size)
+            image_width //= self.grid_size
+            image_height //= self.grid_size
+        return (base_x + image_width // 2, base_y + image_height // 2)
+
+    def all_points(self, global_info):
+        image_width = global_info.width
+        image_height = global_info.height
+        points = []
+        for action in self.taken_action:
+            points.append(self.action2point(action, image_width, image_height))
+        return points
+
+    def get_reward(self, global_info: GlobalInfo):
+        if (self.reward is not None):
+            return self.reward
+        points = np.array(self.all_points(global_info))
+        labels = np.ones(len(points)).astype(int)
+        # 使用 SAM 生成新的 mask
+        new_masks, _, _ = global_info.predictor.predict(
+            points, labels, multimask_output=False)
+        # 使用 RewardModel 计算 reward
+        mask = torch.Tensor(new_masks[0]).unsqueeze(0).unsqueeze(0).to(device)
+        with torch.no_grad():
+            reward = global_info.reward_model(global_info.batch_image, mask)
+            self.reward = reward.item()
+            return self.reward
 
 
 class Node:
-    def __init__(self, state, parent=None):
+    def __init__(self, state: 'State', parent: 'Node' = None):
         self.state = state
         self.parent = parent
         self.children = []
         self.visits = 0
-        self.wins = 0
-
-    def add_child(self, child_state):
-        child_node = Node(child_state,  parent=self)
-        self.children.append(child_node)
-        return child_node
+        self.reward = 0
 
     def is_fully_expanded(self):
         return len(self.children) == len(self.state.get_legal_actions())
 
-    def best_child(self, exploration_weight=1.41):
-        return max(self.children, key=lambda child: child.wins / child.visits + exploration_weight * math.sqrt(
-            math.log(self.visits) / child.visits))
+    def best_child(self, exploration_weight=1.0):
+        weights = [
+            (child.reward / child.visits) + exploration_weight *
+            np.sqrt(2 * np.log(self.visits) / child.visits)
+            for child in self.children
+        ]
+        return self.children[np.argmax(weights)]
+
+    def add_child(self, child_state):
+        child_node = Node(child_state, parent=self)
+        self.children.append(child_node)
+        return child_node
+
+    def update(self, reward):
+        self.reward += reward
+        self.visits += 1
 
 
 class MCTS:
-    def __init__(self, iterations, predictor):
-        self.iterations = iterations
-        self.predictor = predictor
+    def __init__(self, root: Node, global_info: GlobalInfo):
+        self.root = root
+        self.global_info = global_info
 
-    def search(self, root):
-        for _ in range(self.iterations):
-            node = self.select(root)
+    def search(self, num_simulations) -> Node:
+        # 这里添加tqdm
+        for _ in tqdm(range(num_simulations), desc='MCTS', position=1):
+            node = self.select(self.root)
             reward = self.simulate(node)
             self.backpropagate(node, reward)
-        return root.best_child(exploration_weight=0)
+        return self.root.best_child(exploration_weight=0)
 
-    def select(self, node):
+    def select(self, node: Node):
         while node.is_fully_expanded() and node.children:
             node = node.best_child()
         return self.expand(node)
 
-    def expand(self, node):
+    def expand(self, node: Node):
         legal_actions = node.state.get_legal_actions()
-        best_action = None
-        best_reward = float('-inf')
-
-        # 遍历所有合法动作，使用 SAM 计算每个动作的 reward
+        all_points = []
+        all_labels = []
         for action in legal_actions:
-            # 获取执行当前动作后生成的状态
             new_state = node.state.take_action(action)
-            reward = new_state.get_reward()
-            # 更新最高 reward 和对应的最佳动作
-            if reward > best_reward:
-                best_reward = reward
-                best_action = action
-        if best_action is not None:
-            return node.add_child(node.state.take_action(best_action))
-        return node
+            all_points.append(new_state.all_points(self.global_info))
+            all_labels.append(np.ones(len(all_points[-1])).astype(int))
+        batch_reward_idx = self.get_batch_reward_idx(all_points, all_labels)
 
-    def simulate(self, node):
+        return node.add_child(node.state.take_action(legal_actions[batch_reward_idx]))
+
+    def simulate(self, node: Node):
         current_state = node.state
-        while not current_state.is_terminal():
-            action = random.choice(current_state.get_legal_actions())
+        while len(current_state.action) < 3:
+            legal_actions = current_state.get_legal_actions()
+            action = legal_actions[np.random.randint(len(legal_actions))]
             current_state = current_state.take_action(action)
-        return current_state.get_reward()
+        return current_state.get_reward(self.global_info)
 
     def backpropagate(self, node, reward):
         while node is not None:
-            node.visits += 1
-            node.wins += reward
+            node.update(reward)
             node = node.parent
 
+    def get_batch_reward_idx(self, points, labels):
+        batch_size = self.global_info.batch_size
+        total_samples = len(points)
+        num_to_pad = batch_size - total_samples % batch_size  # 计算需要补足的数量
 
-class GlobalInfo:
-    def __init__(self, image: np.array, predictor: SamPredictor, reward_model: RewardPredictionModel):
-        self.image = image
-        self.predictor = predictor
-        self.reward_model = reward_model
+        # 如果需要补足样本
+        if num_to_pad > 0:
+            last_point = points[-1]
+            last_label = labels[-1]
+            points.extend([last_point] * num_to_pad)
+            labels.extend([last_label] * num_to_pad)
+        torch_points = torch.Tensor(np.array(points)).to(device)
+        torch_labels = torch.Tensor(np.array(labels)).to(device)
+        batch_size = global_info.batch_size
+        total_samples = torch_points.shape[0]
+        rewards_list = []
 
+        for i in range(0, len(points), batch_size):
+            batch_points = torch_points[i:i + batch_size]
+            batch_labels = torch_labels[i:i + batch_size]
 
-class GameState:
-    def __init__(self, predictor: SamPredictor, sam_encoder, image, reward_model, points=None, max_step=None):
-        self.depth = 0
-        self.image = image  # 读取图像
-        self.reward_model = reward_model  # 读取真实标签
+            mask, *_ = self.global_info.predictor.predict_torch(
+                batch_points, batch_labels, multimask_output=False
+            )
+            with torch.no_grad():
+                rewards = global_info.reward_model(
+                    self.global_info.batch_image_tensor, mask)
+                rewards_list.append(rewards)
 
-        if points:
-            self.points = points
-        else:
-            self.points = self.divide_image_into_grid(
-                image_shape=self.image.shape, grid_size=(8, 8))  # 将图像分成网格
-            self.actions = list(range(len(self.points) * 2))
-            self.action_space = spaces.Discrete(len(self.actions))
-        self.max_step = max_step
-        self.current_step = 0
-        self.visited = []
-        self.predictor = predictor
-        self.sam_encoder = sam_encoder
-        self.reward = None
-
-    def copy(self):
-        new_state = GameState(predictor=self.predictor, sam_encoder=self.sam_encoder, image=self.image,
-                              reward_model=self.reward_model,
-                              points=self.points, max_step=self.max_step)
-        new_state.actions = self.actions
-        new_state.action_space = self.action_space
-        new_state.visited = self.visited.copy()
-        new_state.current_step = self.current_step
-        return new_state
-
-    def divide_image_into_grid(self, image_shape, grid_size):
-        """将图像划分为网格并返回中心点坐标"""
-        height, width = image_shape[:2]
-        rows, cols = grid_size
-        cell_width = width // cols
-        cell_height = height // rows
-        centers = [(j * cell_width + cell_width // 2, i * cell_height + cell_height // 2)
-                   for i in range(rows) for j in range(cols)]
-        return centers
-
-    def get_legal_actions(self):
-        return list(set(self.actions) - set(self.visited))
-
-    def take_action(self, action):
-        """执行动作并生成新状态"""
-        # 检查动作是否有效
-        if action not in self.get_legal_actions():
-            raise ValueError(f"Action {action} is not legal.")
-        new_state = self.copy()
-        new_state.visited.append(action)
-        # 更新步骤计数
-        new_state.current_step += 1
-        new_state.reward = new_state.get_reward()
-        # 返回新状态（可以根据需要返回状态、奖励等）
-        return new_state
-
-    def apply_sam(self):
-        """应用SAM模型在指定位置进行分割"""
-        points = []
-        labels = []
-        for action in self.visited:
-            point, label = self.action_2_point_label(action)
-            points.append(point)
-            labels.append(label)
-        coords_torch = torch.as_tensor(
-            points, dtype=torch.float, device=device)
-        labels_torch = torch.as_tensor(labels, dtype=torch.int, device=device)
-        coords_torch, labels_torch = coords_torch[None,
-                                                  :, :], labels_torch[None, :]
-        masks, _, _ = self.predictor.predict_torch(point_coords=coords_torch, point_labels=labels_torch,
-                                                   multimask_output=False)
-        return masks[0]
-
-    def is_terminal(self):
-        return self.current_step >= self.max_step
-
-    def get_reward(self):
-        """使用IOU作为奖励"""
-        if self.reward:
-            return self.reward
-        mask = self.apply_sam()
-        mask_tensor = mask.float()
-        # 添加一个新维度并沿最后一个维度重复3次
-        mask_tensor = mask_tensor.unsqueeze(1).repeat(1, 3, 1, 1).to(device)
-        # mask_predictor: SamPredictor = self.mask_predictor
-        # mask_predictor.set_image(mask)
-        image_tensor = torch.tensor(self.image).float().permute(
-            2, 0, 1).unsqueeze(0).to(device)
-        # print(image_tensor.shape)
-        # print(mask_tensor.shape)
-        with torch.no_grad():
-            # mask_feature = self.sam_encoder(mask_tensor)
-            # image_feature = self.predictor.get_image_embedding()
-            # return self.reward_model(image_feature, mask_feature)
-            return self.reward_model(image_tensor, mask_tensor)
-
-    def action_2_point_label(self, action):
-        return self.points[action // 2], (action + 1) % 2
-
-    def get_point_labels(self):
-        points = []
-        labels = []
-        for action in self.visited:
-            # 获取对应的点和标签
-            point, label = self.action_2_point_label(action)
-            points.append(point)
-            labels.append(label)
-        return points, labels
-
-    def get_info(self):
-        res = f'current_step: {self.current_step}\n'
-        for action in self.visited:
-            # 获取对应的点和标签
-            point, label = self.action_2_point_label(action)
-            res += f'Action: {action}, Point: {point}, Label: {label}\n'
-        return res
+        # 合并所有小批次的奖励
+        all_rewards = torch.cat(rewards_list, dim=0)
+        # 返回所有奖励中最大的元素的索引
+        return all_rewards.argmax().item()
 
 
-def get_real_iou(sam_predict, points, labels, ground_truth):
-    mask = sam_predict.predict(
-        np.array(points), np.array(labels), multimask_output=False)
-    mask = mask[0]
-    mask = cv2.resize(mask, ground_truth.shape)
-    return calculate_iou(mask, ground_truth)
-
-
-def train(sam, reward_model, image, ground_truth, max_step=2, iterations=4):
-    log_writer = get_log_writer()
-    predictor = SamPredictor(sam)
-    sam_encoder = sam.image_encoder
-    # image = cv2.imread(image_path)  # 读取图像
-    # ground_truth_mask = cv2.imread(ground_truth_mask, 0)  # 读取真实标签
-    predictor.set_image(image)
-    initial_state = GameState(image=image, reward_model=reward_model, predictor=predictor,
-                              sam_encoder=sam_encoder,
-                              max_step=max_step)
-    root_node = Node(initial_state)
-    start_time = time.time()
-    mcts = MCTS(iterations=iterations, predictor=predictor)
-    best_action: Node = mcts.search(root_node)
-    while not best_action.state.is_terminal():
-        best_action = mcts.search(best_action)
-    # 获取奖励信息
-    reward = best_action.state.get_reward()
-    end_time = time.time()
-    elapsed_time = end_time - start_time
-    points, labels = best_action.state.get_point_labels()
-    mask, _, __ = predictor.predict(
-        np.array(points), np.array(labels), multimask_output=False)
-    resized_mask = (mask[0] * 255).astype(np.uint8)
-    resized_mask = cv2.resize(
-        resized_mask, (ground_truth.shape[1], ground_truth.shape[0]))
-    image = torch.tensor(image)
-    resized_mask = torch.tensor(resized_mask)
-    ground_truth = torch.tensor(ground_truth)
-    iou = calculate_iou(resized_mask, ground_truth)
-    print(f"Elapsed time: {elapsed_time:.2f} seconds")
-    print(f"Best action details: {best_action.state.get_info()}")
-    print(f"Best action reward: {reward}")
-    print(f"IoU: {iou}")
-    log_writer.add_image('Result/origin', image, dataformats='HWC')
-    log_writer.add_image('Result/mask', resized_mask, dataformats='HW')
-    log_writer.add_image('Result/ground_truth', ground_truth, dataformats='HW')
-    log_writer.add_text('Result/action', f'Points: {points}, Labels: {labels}')
-    log_writer.add_scalar('Result/reward', reward)
-    log_writer.add_scalar('Result/IoU', iou)
-    log_writer.close()
-
-
-def load_model():
+def load_model(model_name):
+    model_path = os.path.join(root_path, 'results/models', model_name)
     model = RewardPredictionModel().to(device)
-    with open('reward_model/checkpoint/latest') as f:
-        model_path = f'reward_model/checkpoint/{f.read()}'  # 模型权重文件路径
-    model.load_state_dict(torch.load(model_path))
+    model.load_state_dict(torch.load(model_path, weights_only=True))
+    # model = torch.load(model_path).to(device)
     model.eval()
     return model
 
 
-def load_dataset():
-    dataset = []
-    image_dir = "data/processed/ISBI2016_ISIC/test"
-    file_list = os.listdir(image_dir)
-    image_files = [file.split('.')[0] for file in file_list if re.match(
-        r'^ISIC_\d{7}\.png$', file)]
-    image_files.sort()
-    for idx, image_id in enumerate(image_files):
-        dataset.append((idx, f'{os.path.join(image_dir, f"{image_id}.png")}',
-                        f'{os.path.join(image_dir, f"{image_id}_mask_0.png")}'))
-    return dataset
+def calculate_iou(mask1, mask2):
+    """
+    计算两个掩码之间的交并比IOU。
+    :param mask1: 第一个掩码
+    :param mask2: 第二个掩码
+    :return: IOU 值
+    """
+    intersection = np.logical_and(mask1, mask2).sum()
+    union = np.logical_or(mask1, mask2).sum()
+    iou = intersection / union if union != 0 else 0
+    return iou
 
 
-def main():
-    setup_seed()
-    model = load_model()
-    sam = load_sam()
-    for data in load_dataset():
-        idx, image_path, ground_truth_path = data
-        print(f'正在处理{data}')
-        image = cv2.imread(image_path)
-        ground_truth = cv2.imread(ground_truth_path, cv2.IMREAD_GRAYSCALE)
-        train(sam, model, image, ground_truth, max_step=4, iterations=4)
+def sam_seg_cal_reward(predictor, points, labels, ground_truth, image_id):
+    """
+    使用 SAM 进行分割，结合 ground truth 计算 reward，reward 直接使用 IOU，结果保存在 results/mcts 文件夹下。
+    :param predictor: SAM 预测器
+    :param points: 分割点
+    :param labels: 分割标签
+    :param image: 输入图像(C, H, W)
+    :param ground_truth: ground truth 掩码(H, W)
+    :param image_id: 图像 ID
+    """
+    # 使用 SAM 生成新的 mask
+    new_masks, _, _ = predictor.predict(points, labels, multimask_output=False)
+    new_mask = new_masks[0]  # 取第一个 mask (H, W)
+
+    # 计算 IOU 作为 reward
+    iou = calculate_iou(new_mask, ground_truth)
+
+    # 保存结果
+    results_dir = os.path.join(root_path, 'results', 'mcts')
+    os.makedirs(results_dir, exist_ok=True)
+    result_path = os.path.join(results_dir, f'{image_id}_result.png')
+    mask_path = os.path.join(results_dir, f'{image_id}_mask.png')
+    iou_path = os.path.join(results_dir, f'{image_id}_iou.txt')
+
+    # 保存分割结果和 mask
+    new_mask_image = (new_mask * 255).astype(np.uint8)
+    ground_truth_image = (ground_truth * 255).astype(np.uint8)
+    combined_image = np.concatenate(
+        (new_mask_image, ground_truth_image), axis=1)
+    Image.fromarray(combined_image).save(result_path)
+    Image.fromarray(new_mask_image).save(mask_path)
+    # 将 points 绘制在 mask 上并保存
+    mask_with_points = Image.fromarray(ground_truth_image).convert("RGB")
+    draw = ImageDraw.Draw(mask_with_points)
+    radius = 6
+    for idx, point in enumerate(points):
+        x, y = point
+        draw.ellipse((x - radius, y - radius, x + radius,
+                     y + radius), outline='red', width=2)
+
+        # 使用 textbbox 计算文本边界框大小
+        text = str(idx)
+        bbox = draw.textbbox((0, 0), text, font=None)
+        text_size = (bbox[2] - bbox[0], bbox[3] - bbox[1])
+
+        text_x = x - text_size[0] // 2
+        text_y = y - text_size[1] // 2
+        draw.text((text_x, text_y), text, fill='red')
+    mask_with_points_path = os.path.join(
+        results_dir, f'{image_id}_mask_with_points.png')
+    mask_with_points.save(mask_with_points_path)
+    # 保存 IOU
+    with open(iou_path, 'w') as f:
+        f.write(f'{iou}')
+
+    return iou
 
 
-def test_model():
-    setup_seed()
-    model = RewardPredictionModel().to(device)
-    model_path = 'reward_model/checkpoint/2024-11-15_13-41-07.pth'  # 模型权重文件路径
-    model.load_state_dict(torch.load(model_path))
-    model.eval()
-    image_path = 'data/processed/ISBI2016_ISIC/test/ISIC_0000000.png'
-    image = cv2.imread(image_path)
-    mask_path = 'data/processed/ISBI2016_ISIC/train/ISIC_0000000_mask_5.png'
-    mask = cv2.imread(mask_path, cv2.IMREAD_GRAYSCALE)
-    mask = torch.tensor(mask).float().to(device)
-    gray_image_rgb = torch.stack([mask] * 3, dim=0).unsqueeze(0)
-    sam = load_sam()
-    sam_predictor = SamPredictor(sam)
-    sam_predictor.set_image(image)
-    image_feature = sam_predictor.get_image_embedding()
-    image_encoder = sam.image_encoder
-    with torch.no_grad():
-        mask_feature = image_encoder(gray_image_rgb)
-        reward = model(image_feature, mask_feature)
-        print(reward)
-
-
+# 示例用法
 if __name__ == '__main__':
-    main()
-    # test_model()
-    # image_id = 'ISIC_0000000'
-    # max_step = 1
-    # train(image_path=f'data/ISIC-2017_Training_Data/{image_id}.jpg',
-    #       ground_truth_mask=f'data/ISIC-2017_Training_Part1_GroundTruth/{image_id}_segmentation.png',
-    #       log_path=f'test/{image_id}_{max_step}.txt',
-    #       max_step=max_step)
+    test_loader = get_mcts_test_loader()
+    predictor = SamPredictor(sam)  # 初始化 SAM
+    for data in tqdm(test_loader, desc='Test Image', position=0, leave=True):
+        image = data['image'][0].to(device)
+        mask = data['mask'][0].to(device)
+
+        reward_model = load_model(model_name='2025-01-20_17-28-07.pth')
+        # 初始化 RewardModel
+        global_info = GlobalInfo(
+            image=image, predictor=predictor, reward_model=reward_model, image_shape=image.shape[1:])
+        initial_state = State()
+        root = Node(initial_state)
+
+        max_points = global_info.max_points
+        best_node = root
+        for _ in range(max_points):
+            mcts = MCTS(best_node, global_info)
+            best_node = mcts.search(num_simulations=40)
+        points = np.array(best_node.state.all_points(global_info))
+        reward = best_node.state.get_reward(global_info)
+        labels = np.ones(len(points)).astype(int)
+        image_id = data['image_id'][0]
+        sam_seg_cal_reward(predictor=predictor, points=points,
+                           labels=labels, ground_truth=mask[0].cpu().numpy(), image_id=image_id,)
+        # 将最佳点和奖励写入文件
+        results_dir = os.path.join('results', 'mcts')
+        os.makedirs(results_dir, exist_ok=True)
+        result_file_path = os.path.join(
+            results_dir, f'{image_id}_best_points_and_reward.txt')
+        with open(result_file_path, 'w') as f:
+            f.write(f"Best points: {points.tolist()}\n")
+            f.write(f"Reward: {reward}\n")
