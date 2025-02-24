@@ -7,7 +7,7 @@ from utils.helpers import load_sam, get_data_path, setup_seed
 from tqdm import tqdm
 from PIL import Image
 from segment_anything import SamAutomaticMaskGenerator, SamPredictor
-from helpers import filter_images
+from helpers import filter_images, extract_image_id
 
 setup_seed()
 sam = load_sam()
@@ -47,6 +47,8 @@ def sam_auto_mask(in_dir, out_dir, ground_truth_dir):
         # 使用 tqdm 遍历所有图片文件
         for image_file in tqdm(image_files, desc="Processing images"):
             image_path = os.path.join(image_folder, image_file)
+            image_id = extract_image_id(image_file)
+
             # 打开并处理图片
             try:
                 with Image.open(image_path) as img:
@@ -55,8 +57,14 @@ def sam_auto_mask(in_dir, out_dir, ground_truth_dir):
                     img_array = np.array(img, dtype=np.uint8)
                     # 生成 mask
                     masks = mask_generator.generate(img_array)
+                    ground_truth_files = [f for f in os.listdir(
+                        ground_truth_dir) if f.startswith(image_id)]
+                    if len(ground_truth_files) == 0:
+                        print(f"Ground truth for {image_file} does not exist.")
+                        continue
+                    ground_truth_file = ground_truth_files[0]
                     ground_truth_path = os.path.join(
-                        ground_truth_folder, image_file)
+                        ground_truth_folder, ground_truth_file)
                     ground_truth = Image.open(ground_truth_path).convert('L')
                     ground_truth = np.array(ground_truth, dtype=np.uint8)
                     # 遍历所有masks取一个最佳的mask
@@ -73,7 +81,6 @@ def sam_auto_mask(in_dir, out_dir, ground_truth_dir):
                     # 保存best_mask到指定的文件，文件名规则为原来的文件名_mask_index.png
                     mask_image = Image.fromarray(
                         best_mask.astype('uint8') * 255)
-                    image_id = os.path.splitext(image_file)[0]
                     mask_filename = f"{image_id}_mask_{best_reward_index}.png"
                     mask_image.save(os.path.join(output_folder, mask_filename))
 
@@ -142,8 +149,17 @@ def sam_point_mask(point_number, grid_size, in_dir, ground_truth_dir, out_dir):
 
     for image_file in tqdm(image_files, desc="Processing images"):
         image_path = os.path.join(image_folder, image_file)
+        image_id = extract_image_id(image_file)
+        ground_truth_files = [f for f in os.listdir(
+            ground_truth_folder) if f.startswith(image_id)]
+        if len(ground_truth_files) == 0:
+            print(f"Ground truth for {image_file} does not exist.")
+            continue
+        ground_truth_file = ground_truth_files[0]
         ground_truth_path = os.path.join(
-            ground_truth_folder, image_file.replace('.jpg', '_Segmentation.png'))
+            ground_truth_folder, ground_truth_file)
+        ground_truth = Image.open(ground_truth_path).convert('L')
+        ground_truth = np.array(ground_truth, dtype=np.uint8)
 
         if not os.path.exists(ground_truth_path):
             print(f"Ground truth for {image_file} does not exist.")
@@ -196,10 +212,9 @@ def sam_point_mask(point_number, grid_size, in_dir, ground_truth_dir, out_dir):
                         best_reward = reward
                         best_reward_index = i
                 # 保存best_mask到指定的文件，文件名规则为原来的文件名_mask_index.png
-                
+
                 mask_image = Image.fromarray(
                     best_mask.astype('uint8') * 255)
-                image_id = os.path.splitext(image_file)[0]
                 mask_filename = f"{image_id}_mask_{best_reward_index}.png"
                 mask_image.save(os.path.join(
                     output_folder, mask_filename))
@@ -240,8 +255,17 @@ def sam_point_mask_all_points(grid_size, in_dir, ground_truth_dir, out_dir):
 
     for image_file in tqdm(image_files, desc="Processing images"):
         image_path = os.path.join(image_folder, image_file)
+        image_id = extract_image_id(image_file)
+        ground_truth_files = [f for f in os.listdir(
+            ground_truth_folder) if f.startswith(image_id)]
+        if len(ground_truth_files) == 0:
+            print(f"Ground truth for {image_file} does not exist.")
+            continue
+        ground_truth_file = ground_truth_files[0]
         ground_truth_path = os.path.join(
-            ground_truth_folder, image_file.replace('.jpg', '_Segmentation.png'))
+            ground_truth_folder, ground_truth_file)
+        ground_truth = Image.open(ground_truth_path).convert('L')
+        ground_truth = np.array(ground_truth, dtype=np.uint8)
 
         if not os.path.exists(ground_truth_path):
             print(f"Ground truth for {image_file} does not exist.")
@@ -300,7 +324,6 @@ def sam_point_mask_all_points(grid_size, in_dir, ground_truth_dir, out_dir):
                     # 保存best_mask到指定的文件，文件名规则为原来的文件名_mask_index.png
                     mask_image = Image.fromarray(
                         best_mask.astype('uint8') * 255)
-                    image_id = os.path.splitext(image_file)[0]
                     mask_filename = f"{image_id}_mask_{best_reward_index}.png"
                     mask_image.save(os.path.join(
                         output_folder, mask_filename))

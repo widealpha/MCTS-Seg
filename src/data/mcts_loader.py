@@ -5,9 +5,9 @@ from PIL import Image
 from torch.utils.data import Dataset, DataLoader
 from torchvision.transforms import transforms
 
-from utils.helpers import get_root_path
+from utils.helpers import get_data_path
 
-root_path = get_root_path()
+data_path = get_data_path()
 
 
 class MCTSISICDataset(Dataset):
@@ -18,7 +18,7 @@ class MCTSISICDataset(Dataset):
         self.image_dir = image_dir
         file_list = os.listdir(image_dir)
         self.image_ids = [file.split('_raw')[0] for file in file_list if re.match(
-            r'^ISIC_\d+_raw\.jpg$', file)]
+            r'^.+_raw\.jpg$', file)]
         self.image_ids.sort()
         self.transform = transforms.ToTensor()
 
@@ -45,7 +45,7 @@ class MCTSISICDataset(Dataset):
 
 
 def get_mcts_test_loader(batch_size=1, shuffle=False):
-    data_dir = os.path.join(root_path, 'data/processed/test/resized')
+    data_dir = os.path.join(data_path, 'processed/test/resized')
     dataset = MCTSISICDataset(image_dir=data_dir)
     dataloader = DataLoader(
         dataset, batch_size=batch_size, shuffle=shuffle)
