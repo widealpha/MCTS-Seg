@@ -3,19 +3,11 @@ import numpy as np
 from PIL import Image
 from skimage.measure import label, regionprops
 from tqdm import tqdm
-from utils.helpers import get_root_path
 
 
-root_path = get_root_path()
-
-
-def extract_largest_connected_component(
-        in_dir='data/processed/train/ISBI2016_ISIC/point_masks',
-        out_dir='data/processed/train/ISBI2016_ISIC/connected_point_masks'):
-    point_masks_dir = os.path.join(
-        root_path, in_dir)
-    connected_masks_dir = os.path.join(
-        root_path, out_dir)
+def extract_largest_connected_component(in_dir, out_dir):
+    point_masks_dir = in_dir
+    connected_masks_dir = out_dir
 
     if not os.path.exists(connected_masks_dir):
         os.makedirs(connected_masks_dir)

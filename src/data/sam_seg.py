@@ -3,23 +3,38 @@ import json
 import os
 
 import numpy as np
-import torch
-from utils.helpers import load_sam, get_root_path, setup_seed
+from utils.helpers import load_sam, get_data_path, setup_seed
 from tqdm import tqdm
 from PIL import Image
 from segment_anything import SamAutomaticMaskGenerator, SamPredictor
+from helpers import filter_images
+
 setup_seed()
 sam = load_sam()
 
-root_path = get_root_path()
+
+def rewards_function(mask, ground_truth):
+    """
+    计算 mask 和 ground_truth 之间的 Dice 系数。
+    :param mask: 预测的 mask
+    :param ground_truth: ground truth mask
+    :return: Dice 系数
+    """
+    mask = mask.astype(bool)
+    ground_truth = ground_truth.astype(bool)
+    intersection = np.logical_and(mask, ground_truth)
+    dice_score = (2 * np.sum(intersection)) / \
+        (np.sum(mask) + np.sum(ground_truth) + 1e-7)
+    return dice_score
 
 
-def sam_auto_mask(in_dir='data/raw/train/ISBI2016_ISIC/image', out_dir='data/processed/train/ISBI2016_ISIC/auto_masks'):
+def sam_auto_mask(in_dir, out_dir, ground_truth_dir):
     mask_generator = SamAutomaticMaskGenerator(sam)
     # 定义图片文件夹路径
-    image_folder = os.path.join( root_path, in_dir)
-    output_folder = os.path.join(root_path, out_dir)
-    json_output_file = os.path.join(root_path, out_dir, 'mask_metadata.json')
+    image_folder = in_dir
+    output_folder = os.path.join(out_dir, 'best_rewards')
+    ground_truth_folder = ground_truth_dir
+    json_output_file = os.path.join(out_dir, 'mask_metadata.json')
     metadata = []  # 用于存储所有 mask 信息
     os.makedirs(output_folder, exist_ok=True)
     # 检查路径是否存在
@@ -28,7 +43,7 @@ def sam_auto_mask(in_dir='data/raw/train/ISBI2016_ISIC/image', out_dir='data/pro
         image_files = [f for f in os.listdir(
             image_folder) if f.lower().endswith(('.png', '.jpg', '.jpeg'))]
         image_files.sort()
-        # image_files = ['ISIC_0009860.jpg']
+        image_files = filter_images(image_files)
         # 使用 tqdm 遍历所有图片文件
         for image_file in tqdm(image_files, desc="Processing images"):
             image_path = os.path.join(image_folder, image_file)
@@ -40,34 +55,60 @@ def sam_auto_mask(in_dir='data/raw/train/ISBI2016_ISIC/image', out_dir='data/pro
                     img_array = np.array(img, dtype=np.uint8)
                     # 生成 mask
                     masks = mask_generator.generate(img_array)
-                    # 保存所有 mask 并编号
+                    ground_truth_path = os.path.join(
+                        ground_truth_folder, image_file)
+                    ground_truth = Image.open(ground_truth_path).convert('L')
+                    ground_truth = np.array(ground_truth, dtype=np.uint8)
+                    # 遍历所有masks取一个最佳的mask
+                    best_mask = None
+                    best_reward = 0
+                    best_reward_index = 0
                     for i, mask_data in enumerate(masks):
                         mask = mask_data['segmentation']
-                        bbox = mask_data['bbox']
-                        area = mask_data['area']
-                        predicted_iou = mask_data['predicted_iou']
-                        point_coords = mask_data['point_coords']
-                        stability_score = mask_data['stability_score']
-                        crop_box = mask_data['crop_box']
+                        reward = rewards_function(mask, ground_truth)
+                        if reward > best_reward:
+                            best_mask = mask
+                            best_reward = reward
+                            best_reward_index = i
+                    # 保存best_mask到指定的文件，文件名规则为原来的文件名_mask_index.png
+                    mask_image = Image.fromarray(
+                        best_mask.astype('uint8') * 255)
+                    image_id = os.path.splitext(image_file)[0]
+                    mask_filename = f"{image_id}_mask_{best_reward_index}.png"
+                    mask_image.save(os.path.join(output_folder, mask_filename))
 
-                        # 保存 mask 图像
-                        mask_image = Image.fromarray(
-                            mask.astype('uint8') * 255)
-                        mask_filename = f"{os.path.splitext(image_file)[0]}_mask_{i}.png"
-                        mask_image.save(os.path.join(
-                            output_folder, mask_filename))
+                    with open(os.path.join(output_folder, f"{image_id}_best_score.txt"), 'w') as f:
+                        f.write(f"{best_reward}\n")
 
-                        # 添加元数据
-                        metadata.append({
-                            'image_file': image_file,
-                            'mask_file': mask_filename,
-                            'bbox': bbox,
-                            'area': area,
-                            'predicted_iou': predicted_iou,
-                            'point_coords': point_coords,
-                            'stability_score': stability_score,
-                            'crop_box': crop_box
-                        })
+                    # 保存所有 mask 并编号
+                    # for i, mask_data in enumerate(masks):
+                    #     mask = mask_data['segmentation']
+                    #     bbox = mask_data['bbox']
+                    #     area = mask_data['area']
+                    #     predicted_iou = mask_data['predicted_iou']
+                    #     point_coords = mask_data['point_coords']
+                    #     stability_score = mask_data['stability_score']
+                    #     crop_box = mask_data['crop_box']
+
+                    #     # 保存 mask 图像
+                    #     mask_image = Image.fromarray(
+                    #         mask.astype('uint8') * 255)
+                    #     mask_filename = f"{os.path.splitext(image_file)[0]}_mask_{i}.png"
+
+                    #     mask_image.save(os.path.join(
+                    #         output_folder, mask_filename))
+
+                    #     # 添加元数据
+                    #     metadata.append({
+                    #         'image_file': image_file,
+                    #         'mask_file': mask_filename,
+                    #         'bbox': bbox,
+                    #         'area': area,
+                    #         'predicted_iou': predicted_iou,
+                    #         'point_coords': point_coords,
+                    #         'stability_score': stability_score,
+                    #         'crop_box': crop_box
+                    #     })
             except Exception as e:
                 print(f"Error processing image {image_file}: {e}")
                 # 保存所有的元数据到 JSON 文件
@@ -77,17 +118,14 @@ def sam_auto_mask(in_dir='data/raw/train/ISBI2016_ISIC/image', out_dir='data/pro
         print(f"The folder '{image_folder}' does not exist.")
 
 
-def sam_point_mask(point_number, grid_size,
-                   in_dir='data/raw/train/ISBI2016_ISIC/image',
-                   ground_truth_dir='data/raw/train/ISBI2016_ISIC/ground_truth',
-                   out_dir='data/processed/train/ISBI2016_ISIC/point_masks'):
+def sam_point_mask(point_number, grid_size, in_dir, ground_truth_dir, out_dir):
     '''
     将图像网格划分为grid_size * grid_size的网格，
     依据ground_truth从每个网格中随机选取point_number个在其中的点，生成点标注的mask
     '''
-    image_folder = os.path.join(      root_path, in_dir)
-    ground_truth_folder = os.path.join(root_path, ground_truth_dir)
-    output_folder = os.path.join(        root_path, out_dir)
+    image_folder = in_dir
+    ground_truth_folder = ground_truth_dir
+    output_folder = os.path.join(out_dir, 'best_rewards')
     os.makedirs(output_folder, exist_ok=True)
 
     if not os.path.exists(image_folder) or not os.path.exists(ground_truth_folder):
@@ -98,6 +136,7 @@ def sam_point_mask(point_number, grid_size,
     image_files = [f for f in os.listdir(
         image_folder) if f.lower().endswith(('.png', '.jpg', '.jpeg'))]
     image_files.sort()
+    image_files = filter_images(image_files)
 
     predictor = SamPredictor(sam)
 
@@ -141,27 +180,50 @@ def sam_point_mask(point_number, grid_size,
 
                 predictor.set_image(img_array)
                 masks, _, _ = predictor.predict(points, labels)
-
+                ground_truth_path = os.path.join(
+                    ground_truth_folder, image_file)
+                ground_truth = Image.open(ground_truth_path).convert('L')
+                ground_truth = np.array(ground_truth, dtype=np.uint8)
+                # 遍历所有masks取一个最佳的mask
+                best_mask = None
+                best_reward = 0
+                best_reward_index = 0
                 for i, mask in enumerate(masks):
-                    mask_image = Image.fromarray(mask.astype('uint8') * 255)
-                    mask_filename = f"{os.path.splitext(image_file)[0]}_point_mask_{i}.png"
-                    mask_image.save(os.path.join(output_folder, mask_filename))
+                    # mask = mask_data['segmentation']
+                    reward = rewards_function(mask, ground_truth)
+                    if reward > best_reward:
+                        best_mask = mask
+                        best_reward = reward
+                        best_reward_index = i
+                # 保存best_mask到指定的文件，文件名规则为原来的文件名_mask_index.png
+                
+                mask_image = Image.fromarray(
+                    best_mask.astype('uint8') * 255)
+                image_id = os.path.splitext(image_file)[0]
+                mask_filename = f"{image_id}_mask_{best_reward_index}.png"
+                mask_image.save(os.path.join(
+                    output_folder, mask_filename))
+
+                with open(os.path.join(output_folder, f"{image_id}_best_score.txt"), 'w') as f:
+                    f.write(f"{best_reward}\n")
+
+                # for i, mask in enumerate(masks):
+                #     mask_image = Image.fromarray(mask.astype('uint8') * 255)
+                #     mask_filename = f"{os.path.splitext(image_file)[0]}_point_mask_{i}.png"
+                #     mask_image.save(os.path.join(output_folder, mask_filename))
 
         except Exception as e:
             print(f"Error processing image {image_file}: {e}")
 
 
-def sam_point_mask_all_points(grid_size,
-                              in_dir='data/raw/train/ISBI2016_ISIC/image',
-                              ground_truth_dir='data/raw/train/ISBI2016_ISIC/ground_truth',
-                              out_dir='data/processed/train/ISBI2016_ISIC/all_point_masks'):
+def sam_point_mask_all_points(grid_size, in_dir, ground_truth_dir, out_dir):
     '''
     将图像网格划分为grid_size * grid_size的网格，
     依据ground_truth从每个网格中随机选取point_number个在其中的点，生成点标注的mask
     '''
-    image_folder = os.path.join(root_path, in_dir)
-    ground_truth_folder = os.path.join(root_path, ground_truth_dir)
-    output_folder = os.path.join(root_path, out_dir)
+    image_folder = in_dir
+    ground_truth_folder = ground_truth_dir
+    output_folder = os.path.join(out_dir, 'best_rewards')
     os.makedirs(output_folder, exist_ok=True)
 
     if not os.path.exists(image_folder) or not os.path.exists(ground_truth_folder):
@@ -172,6 +234,7 @@ def sam_point_mask_all_points(grid_size,
     image_files = [f for f in os.listdir(
         image_folder) if f.lower().endswith(('.png', '.jpg', '.jpeg'))]
     image_files.sort()
+    image_files = filter_images(image_files)
 
     predictor = SamPredictor(sam)
 
@@ -219,16 +282,42 @@ def sam_point_mask_all_points(grid_size,
                 for idx, point in enumerate(points):
                     masks, _, _ = predictor.predict(
                         np.array([point]), np.array([labels[idx]]))
-                    for i, mask in enumerate(masks):
-                        mask_image = Image.fromarray(
-                            mask.astype('uint8') * 255)
-                        mask_filename = f"{os.path.splitext(image_file)[0]}_point_mask_{idx}_{i}.png"
-                        mask_image.save(os.path.join(
-                            image_output_folder, mask_filename))
+                    ground_truth_path = os.path.join(
+                        ground_truth_folder, image_file)
+                    ground_truth = Image.open(ground_truth_path).convert('L')
+                    ground_truth = np.array(ground_truth, dtype=np.uint8)
+                    # 遍历所有masks取一个最佳的mask
+                    best_mask = None
+                    best_reward = 0
+                    best_reward_index = 0
+                    for i, mask_data in enumerate(masks):
+                        mask = mask_data['segmentation']
+                        reward = rewards_function(mask, ground_truth)
+                        if reward > best_reward:
+                            best_mask = mask
+                            best_reward = reward
+                            best_reward_index = i
+                    # 保存best_mask到指定的文件，文件名规则为原来的文件名_mask_index.png
+                    mask_image = Image.fromarray(
+                        best_mask.astype('uint8') * 255)
+                    image_id = os.path.splitext(image_file)[0]
+                    mask_filename = f"{image_id}_mask_{best_reward_index}.png"
+                    mask_image.save(os.path.join(
+                        output_folder, mask_filename))
+
+                    with open(os.path.join(output_folder, f"{image_id}_best_score.txt"), 'w') as f:
+                        f.write(f"{best_reward}\n")
 
         except Exception as e:
             print(f"Error processing image {image_file}: {e}")
 
 
 if __name__ == '__main__':
-    sam_point_mask_all_points(grid_size=20)
+    data_path = get_data_path()
+    in_dir = os.path.join(data_path, 'raw', 'train', 'image')
+    out_dir = os.path.join(data_path, 'processed', 'train', 'auto_masks')
+    ground_truth_dir = os.path.join(data_path, 'raw', 'train', 'ground_truth')
+
+    sam_auto_mask(in_dir=in_dir,
+                  ground_truth_dir=ground_truth_dir,
+                  out_dir=out_dir)

@@ -8,11 +8,7 @@ from segment_anything import sam_model_registry
 from torch.utils.tensorboard import SummaryWriter
 
 device = "cuda" if torch.cuda.is_available() else "cpu"
-dataset = "BraTS"
-
-
-def get_log_writer():
-    return SummaryWriter(os.path.join(get_root_path(), 'results/logs', f'{datetime.now().strftime("%Y-%m-%d_%H-%M-%S")}'))
+dataset = "ISIC2016"
 
 
 def get_root_path():
@@ -21,7 +17,25 @@ def get_root_path():
 
 
 def get_data_path():
-    return os.path.join(get_root_path(), 'data', dataset)
+    res = os.path.join(get_root_path(), 'data', dataset)
+    os.makedirs(res, exist_ok=True)
+    return res
+
+
+def get_checkpoints_path():
+    res = os.path.join(get_root_path(), 'result', 'checkpoints', dataset)
+    os.makedirs(res, exist_ok=True)
+    return res
+
+
+def get_log_path():
+    res = os.path.join(get_root_path(), 'result', 'logs', dataset)
+    os.makedirs(res, exist_ok=True)
+    return res
+
+
+def get_log_writer():
+    return SummaryWriter(get_log_path(), f'{datetime.now().strftime("%Y-%m-%d_%H-%M-%S")}')
 
 
 def setup_seed(seed: int = 2024):

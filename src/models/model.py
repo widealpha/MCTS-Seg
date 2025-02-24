@@ -12,7 +12,7 @@ class RewardPredictionModel(nn.Module):
         self.conv = nn.Conv2d(in_channels=1, out_channels=8, kernel_size=3, stride=2, padding=1)
         self.conv1 = nn.Conv2d(in_channels=8, out_channels=16, kernel_size=3, stride=2, padding=1)
         # 定义全连接层
-        self.fc1 = nn.Linear(2**20, 16)
+        self.fc1 = nn.Linear(16 * 128 * 128, 16)
         self.fc2 = nn.Linear(16, 1)
 
     def forward(self, image, mask):

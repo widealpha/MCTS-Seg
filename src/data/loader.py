@@ -10,7 +10,7 @@ from utils.helpers import get_data_path
 data_path = get_data_path()
 
 
-class ISICDataset(Dataset):
+class ImageDataset(Dataset):
     def __init__(self, image_dir, per_image_mask=4):
         """
         :param image_dir: 原图像所在目录
@@ -18,7 +18,7 @@ class ISICDataset(Dataset):
         self.image_dir = image_dir
         file_list = os.listdir(image_dir)
         self.image_ids = [file.split('_raw')[0] for file in file_list if re.match(
-            r'^ISIC_\d+_raw\.jpg$', file)]
+            r'.+_raw\.jpg$', file)]
         self.image_ids.sort()
         self.per_image_mask = per_image_mask
         self.transform = transforms.ToTensor()
@@ -57,8 +57,8 @@ def get_data_loader(batch_size=2, shuffle=True, test_batch_size=4, test_shuffle=
     test_dir = os.path.join(data_path, 'processed/test/resized')
 
     # 创建数据集实例
-    train_dataset = ISICDataset(image_dir=train_dir)
-    test_dataset = ISICDataset(image_dir=test_dir)
+    train_dataset = ImageDataset(image_dir=train_dir)
+    test_dataset = ImageDataset(image_dir=test_dir)
 
     # 创建数据加载器
     train_dataloader = DataLoader(

@@ -4,22 +4,23 @@ from tqdm import tqdm
 from datetime import datetime
 from models.model import RewardPredictionModel
 from data.loader import get_data_loader
-from utils.helpers import get_log_writer, get_root_path, device, setup_seed
+from utils.helpers import get_log_writer, device, setup_seed, get_checkpoints_path
 from torch import nn, optim
 import os
 
-root_path = get_root_path()
+checkpoints_path = get_checkpoints_path()
+
 setup_seed()
 
 
-def train(checkpoint_path=None):
+def train(old_check_point=None):
     log_writer = get_log_writer()
     lr = 1e-4
     # 初始化模型、损失函数和优化器
     model = RewardPredictionModel().to(device)
-    if checkpoint_path:
-        model.load_state_dict(torch.load(checkpoint_path))
-        print(f"Loaded model from {checkpoint_path}")
+    if old_check_point:
+        model.load_state_dict(torch.load(old_check_point))
+        print(f"Loaded model from {old_check_point}")
     criterion = nn.MSELoss()  # 修改为分类损失函数
     optimizer = optim.Adam(model.parameters(), lr=lr)
     # 训练循环
@@ -56,7 +57,7 @@ def train(checkpoint_path=None):
             test_steps = 0
             model.eval()
             with torch.no_grad():
-                for batch in test_dataloader:
+                for batch in tqdm(test_dataloader, desc=f'Test {epoch + 1}'):
                     image = batch['image'].to(device)
                     mask = batch['mask'].to(device)
                     reward = batch['reward'].float().unsqueeze(1).to(device)
@@ -68,23 +69,24 @@ def train(checkpoint_path=None):
             log_writer.add_scalar('Loss/test', test_loss / test_steps, epoch)
             print(
                 f"Epoch [{epoch + 1}/{epochs}], Train Loss:{train_loss / train_steps}, Test Loss: {test_loss / test_steps}")
+            torch.save(model.state_dict(), os.path.join(
+                checkpoints_path, f'{datetime.now().strftime("%Y-%m-%d_%H-%M-%S")}.pth'))
         else:
-            print(f"Epoch [{epoch + 1}/{epochs}], Train Loss:{train_loss / train_steps}")
-        torch.save(model.state_dict(), os.path.join(
-            root_path, 'results/models', f'{datetime.now().strftime("%Y-%m-%d_%H-%M-%S")}.pth'))
+            print(
+                f"Epoch [{epoch + 1}/{epochs}], Train Loss:{train_loss / train_steps}")
     latest_model_name = f'{datetime.now().strftime("%Y-%m-%d_%H-%M-%S")}.pth'
     torch.save(model.state_dict(), os.path.join(
-        root_path, 'results/models', latest_model_name))
+        checkpoints_path, latest_model_name))
     log_writer.add_text('Model/lr', f'{lr}')
     log_writer.add_text('Model/criterion', f'{criterion}')
     log_writer.add_text(f'Model/model', f'{model}')
-    dummy_input = (torch.randn(1, 3, 1024, 1024).to(device),
-                   torch.randn(1, 1, 1024, 1024).to(device))
+    dummy_input = (torch.randn(1, 3, 512, 512).to(device),
+                   torch.randn(1, 1, 512, 512).to(device))
     log_writer.add_graph(model, input_to_model=dummy_input)
     log_writer.close()
 
 
 if __name__ == '__main__':
-    checkpoint_path = os.path.join(
-        root_path, 'results/models', '2025-01-18_15-31-04.pth')
-    train(checkpoint_path=checkpoint_path)
+    old_check_point = os.path.join(
+        checkpoints_path, '2025-01-18_15-31-04.pth')
+    train(old_check_point=None)

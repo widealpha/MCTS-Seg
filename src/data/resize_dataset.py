@@ -5,10 +5,6 @@ from PIL import Image
 from skimage.measure import label, regionprops
 from tqdm import tqdm
 from data.expand_dataset import extract_image_id
-from utils.helpers import get_root_path
-
-
-root_path = get_root_path()
 
 
 def extract_mask_id(mask_file):
@@ -70,15 +66,17 @@ def rewards_function(mask, ground_truth):
 def normalize_rewards(rewards, output_dir):
     # 提取奖励值
     reward_values = [r[0] for r in rewards]
-    
+
     # 计算全局的均值和标准差
     mean_reward = np.mean(reward_values)
     std_reward = np.std(reward_values)
 
     # 对所有 reward 进行归一化并保存
-    normalized_rewards = [(r - mean_reward) / std_reward for r in reward_values]
+    normalized_rewards = [(r - mean_reward) /
+                          std_reward for r in reward_values]
     for (reward, image_id, mask_id), norm_reward in zip(rewards, normalized_rewards):
-        norm_reward_path = os.path.join(output_dir, f"{image_id}_{mask_id}_normalized_reward.txt")
+        norm_reward_path = os.path.join(
+            output_dir, f"{image_id}_{mask_id}_normalized_reward.txt")
         with open(norm_reward_path, 'w') as f:
             f.write(f"{norm_reward}\n")
 
@@ -94,11 +92,12 @@ def normalize_rewards(rewards, output_dir):
 def normalize_test_rewards(rewards, train_mean, train_std, output_dir):
     # 提取奖励值
     reward_values = [r[0] for r in rewards]
-    
+
     # 使用训练集的均值和标准差对测试集的奖励进行归一化
     normalized_rewards = [(r - train_mean) / train_std for r in reward_values]
     for (reward, image_id, mask_id), norm_reward in zip(rewards, normalized_rewards):
-        norm_reward_path = os.path.join(output_dir, f"{image_id}_{mask_id}_normalized_reward.txt")
+        norm_reward_path = os.path.join(
+            output_dir, f"{image_id}_{mask_id}_normalized_reward.txt")
         with open(norm_reward_path, 'w') as f:
             f.write(f"{norm_reward}\n")
 
@@ -115,9 +114,9 @@ def resize_and_compare_images(in_dir, out_dir, raw_dir, size=(1024, 1024), mode=
     :param train_mean: 训练集的均值（仅在测试模式下使用）
     :param train_std: 训练集的标准差（仅在测试模式下使用）
     """
-    input_dir = os.path.join(root_path, in_dir)
-    output_dir = os.path.join(root_path, out_dir)
-    raw_image_dir = os.path.join(root_path, raw_dir)
+    input_dir = in_dir
+    output_dir = out_dir
+    raw_image_dir = raw_dir
     os.makedirs(output_dir, exist_ok=True)
 
     rewards = []
@@ -130,7 +129,14 @@ def resize_and_compare_images(in_dir, out_dir, raw_dir, size=(1024, 1024), mode=
         mask_id = extract_mask_id(image_file)
         image_path = os.path.join(input_dir, image_file)
         ground_truth_path = os.path.join(input_dir, f"{image_id}_mask_0.png")
-        raw_image_path = os.path.join(raw_image_dir, f"{image_id}.jpg")
+        # 匹配以image_id开头的raw image
+        raw_image_files = [f for f in os.listdir(
+            raw_image_dir) if f.startswith(image_id)]
+        if len(raw_image_files) == 0:
+            print(f"Raw image for {image_file} does not exist.")
+            continue
+        raw_image_file = raw_image_files[0]
+        raw_image_path = os.path.join(raw_image_dir, raw_image_file)
 
         if not os.path.exists(ground_truth_path):
             print(f"Ground truth for {image_file} does not exist.")
@@ -189,5 +195,7 @@ if __name__ == '__main__':
     test_out_dir = f'data/processed/{test_mode}/resized'
     test_raw_dir = f'data/raw/{test_mode}/ISBI2016_ISIC/image'
 
-    train_mean, train_std = resize_and_compare_images(train_in_dir, train_out_dir, train_raw_dir, (1024, 1024), train_mode)
-    resize_and_compare_images(test_in_dir, test_out_dir, test_raw_dir, (1024, 1024), test_mode, train_mean, train_std)
+    train_mean, train_std = resize_and_compare_images(
+        train_in_dir, train_out_dir, train_raw_dir, (1024, 1024), train_mode)
+    resize_and_compare_images(test_in_dir, test_out_dir, test_raw_dir,
+                              (1024, 1024), test_mode, train_mean, train_std)

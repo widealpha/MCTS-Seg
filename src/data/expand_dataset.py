@@ -5,18 +5,19 @@ import numpy as np
 from PIL import Image
 from skimage.measure import label, regionprops
 from tqdm import tqdm
-from utils.helpers import get_root_path
 
-root_path = get_root_path()
+from helpers import extract_image_id, filter_images
 
 
-def extract_image_id(image_path):
-    '''从文件路径中提取符合 ISIC_\d+ 形式的 image_id'''
-    match = re.search(r'ISIC_\d+', os.path.basename(image_path))
-    if match:
-        return match.group(0)
-    else:
-        raise ValueError(f"无法从路径中提取 image_id: {image_path}")
+# def extract_image_id(image_path):
+#     '''从文件路径中提取 image_id'''
+#     # 替换_mask_\d+.png 为 ''
+#     return re.sub(r'_mask_\d+.png', '', os.path.basename(image_path)).split('.')[0]
+# match = re.search(r'(.+)_mask_\d+.png', os.path.basename(image_path))
+# if match:
+#     return match.group(0)
+# else:
+#     raise ValueError(f"无法从路径中提取 image_id: {image_path}")
 
 
 def rewards_function(mask, ground_truth):
@@ -40,21 +41,29 @@ def rewards_function(mask, ground_truth):
     return max(adjusted_dice_score, 0)  # 确保奖励值不为负
 
 
-def copy_best_rewards(in_dir, out_dir, ground_truth_dir, index):
+def copy_best_rewards(in_dir, out_dir, ground_truth_dir, index, is_ground_truth=False):
     '''复制最佳奖励到文件夹,并命名为{image_id}_mask_{index}.png
     使用rewards_function重新计算奖励,并保存到{image_id}_mask_{index}_reward.txt'''
-    input_dir = os.path.join(root_path, in_dir)
-    ground_truth_dir = os.path.join(root_path, ground_truth_dir)
-    output_dir = os.path.join(root_path, out_dir)
+    input_dir = in_dir
+    ground_truth_dir = ground_truth_dir
+    output_dir = out_dir
     os.makedirs(output_dir, exist_ok=True)
 
     image_files = [f for f in os.listdir(input_dir) if f.endswith('.png')]
     image_files.sort()
+    if is_ground_truth:
+        image_files = filter_images(image_files)
     for image_file in tqdm(image_files, desc="Copy best rewards"):
         image_id = extract_image_id(image_file)
         image_path = os.path.join(input_dir, image_file)
-        ground_truth_path = os.path.join(
-            ground_truth_dir, f"{image_id}_Segmentation.png")
+        # 匹配以image_id开头的ground_truth文件
+        ground_truth_files = [f for f in os.listdir(
+            ground_truth_dir) if f.startswith(image_id)]
+        if len(ground_truth_files) == 0:
+            print(f"Ground truth for {image_file} does not exist.")
+            continue
+        ground_truth_file = ground_truth_files[0]
+        ground_truth_path = os.path.join(ground_truth_dir, ground_truth_file)
 
         if not os.path.exists(ground_truth_path):
             print(f"Ground truth for {image_file} does not exist.")
