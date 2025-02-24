@@ -8,10 +8,10 @@ from PIL import Image, ImageDraw
 from tqdm import tqdm
 from models.model import RewardPredictionModel
 from data.mcts_loader import get_mcts_test_loader
-from utils.helpers import get_root_path, setup_seed, load_sam, device
+from utils.helpers import get_checkpoints_path, get_log_path, get_mcts_path, setup_seed, load_sam, device
 setup_seed()
 sam = load_sam()
-root_path = get_root_path()
+checkpoints_path = get_checkpoints_path()
 
 
 class GlobalInfo:
@@ -209,7 +209,7 @@ class MCTS:
 
 
 def load_model(model_name):
-    model_path = os.path.join(root_path, 'results/models', model_name)
+    model_path = os.path.join(checkpoints_path, model_name)
     model = RewardPredictionModel().to(device)
     model.load_state_dict(torch.load(model_path, weights_only=True))
     # model = torch.load(model_path).to(device)
@@ -248,7 +248,7 @@ def sam_seg_cal_reward(predictor, points, labels, ground_truth, image_id):
     iou = calculate_iou(new_mask, ground_truth)
 
     # 保存结果
-    results_dir = os.path.join(root_path, 'results', 'mcts')
+    results_dir = get_mcts_path()
     os.makedirs(results_dir, exist_ok=True)
     result_path = os.path.join(results_dir, f'{image_id}_result.png')
     mask_path = os.path.join(results_dir, f'{image_id}_mask.png')
@@ -296,7 +296,7 @@ if __name__ == '__main__':
         image = data['image'][0].to(device)
         mask = data['mask'][0].to(device)
 
-        reward_model = load_model(model_name='2025-01-20_17-28-07.pth')
+        reward_model = load_model(model_name='2025-02-24_20-49-30.pth')
         # 初始化 RewardModel
         global_info = GlobalInfo(
             image=image, predictor=predictor, reward_model=reward_model, image_shape=image.shape[1:])

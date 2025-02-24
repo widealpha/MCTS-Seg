@@ -29,7 +29,7 @@ def rewards_function(mask, ground_truth):
 
 
 def sam_auto_mask(in_dir, out_dir, ground_truth_dir):
-    mask_generator = SamAutomaticMaskGenerator(sam)
+    mask_generator = SamAutomaticMaskGenerator(sam, points_per_batch=32)
     # 定义图片文件夹路径
     image_folder = in_dir
     output_folder = os.path.join(out_dir, 'best_rewards')
@@ -150,20 +150,15 @@ def sam_point_mask(point_number, grid_size, in_dir, ground_truth_dir, out_dir):
     for image_file in tqdm(image_files, desc="Processing images"):
         image_path = os.path.join(image_folder, image_file)
         image_id = extract_image_id(image_file)
+        
         ground_truth_files = [f for f in os.listdir(
             ground_truth_folder) if f.startswith(image_id)]
         if len(ground_truth_files) == 0:
-            print(f"Ground truth for {image_file} does not exist.")
+            print(f"Ground truth for {image_id} does not exist.")
             continue
         ground_truth_file = ground_truth_files[0]
         ground_truth_path = os.path.join(
             ground_truth_folder, ground_truth_file)
-        ground_truth = Image.open(ground_truth_path).convert('L')
-        ground_truth = np.array(ground_truth, dtype=np.uint8)
-
-        if not os.path.exists(ground_truth_path):
-            print(f"Ground truth for {image_file} does not exist.")
-            continue
 
         try:
             with Image.open(image_path) as img, Image.open(ground_truth_path) as gt:
@@ -196,17 +191,13 @@ def sam_point_mask(point_number, grid_size, in_dir, ground_truth_dir, out_dir):
 
                 predictor.set_image(img_array)
                 masks, _, _ = predictor.predict(points, labels)
-                ground_truth_path = os.path.join(
-                    ground_truth_folder, image_file)
-                ground_truth = Image.open(ground_truth_path).convert('L')
-                ground_truth = np.array(ground_truth, dtype=np.uint8)
                 # 遍历所有masks取一个最佳的mask
                 best_mask = None
                 best_reward = 0
                 best_reward_index = 0
                 for i, mask in enumerate(masks):
                     # mask = mask_data['segmentation']
-                    reward = rewards_function(mask, ground_truth)
+                    reward = rewards_function(mask, gt_array)
                     if reward > best_reward:
                         best_mask = mask
                         best_reward = reward
@@ -264,9 +255,6 @@ def sam_point_mask_all_points(grid_size, in_dir, ground_truth_dir, out_dir):
         ground_truth_file = ground_truth_files[0]
         ground_truth_path = os.path.join(
             ground_truth_folder, ground_truth_file)
-        ground_truth = Image.open(ground_truth_path).convert('L')
-        ground_truth = np.array(ground_truth, dtype=np.uint8)
-
         if not os.path.exists(ground_truth_path):
             print(f"Ground truth for {image_file} does not exist.")
             continue
@@ -306,17 +294,13 @@ def sam_point_mask_all_points(grid_size, in_dir, ground_truth_dir, out_dir):
                 for idx, point in enumerate(points):
                     masks, _, _ = predictor.predict(
                         np.array([point]), np.array([labels[idx]]))
-                    ground_truth_path = os.path.join(
-                        ground_truth_folder, image_file)
-                    ground_truth = Image.open(ground_truth_path).convert('L')
-                    ground_truth = np.array(ground_truth, dtype=np.uint8)
                     # 遍历所有masks取一个最佳的mask
                     best_mask = None
                     best_reward = 0
                     best_reward_index = 0
                     for i, mask_data in enumerate(masks):
                         mask = mask_data['segmentation']
-                        reward = rewards_function(mask, ground_truth)
+                        reward = rewards_function(mask, gt_array)
                         if reward > best_reward:
                             best_mask = mask
                             best_reward = reward

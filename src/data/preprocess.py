@@ -87,4 +87,4 @@ def generate_data(train=False, use_best_point=False):
 
 if __name__ == '__main__':
     # generate_data(train=True)  # 生成训练数据
-    generate_data(train=True, use_best_point=False)  # 生成测试数据
+    generate_data(train=False, use_best_point=False)  # 生成测试数据

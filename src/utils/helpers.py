@@ -8,7 +8,7 @@ from segment_anything import sam_model_registry
 from torch.utils.tensorboard import SummaryWriter
 
 device = "cuda" if torch.cuda.is_available() else "cpu"
-dataset = "ISIC2016"
+dataset = ["ISIC2016", "BraTS"][0]
 
 
 def get_root_path():
@@ -30,6 +30,11 @@ def get_checkpoints_path():
 
 def get_log_path():
     res = os.path.join(get_root_path(), 'result', 'logs', dataset)
+    os.makedirs(res, exist_ok=True)
+    return res
+
+def get_mcts_path():
+    res = os.path.join(get_root_path(), 'result', 'mcts', dataset)
     os.makedirs(res, exist_ok=True)
     return res
 
