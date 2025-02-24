@@ -8,6 +8,7 @@ from segment_anything import sam_model_registry
 from torch.utils.tensorboard import SummaryWriter
 
 device = "cuda" if torch.cuda.is_available() else "cpu"
+dataset = "BraTS"
 
 
 def get_log_writer():
@@ -17,6 +18,10 @@ def get_log_writer():
 def get_root_path():
     current_dir = os.path.dirname(__file__)
     return os.path.join(current_dir, '../../')
+
+
+def get_data_path():
+    return os.path.join(get_root_path(), 'data', dataset)
 
 
 def setup_seed(seed: int = 2024):

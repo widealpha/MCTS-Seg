@@ -5,9 +5,9 @@ from PIL import Image
 from torch.utils.data import Dataset, DataLoader
 from torchvision.transforms import transforms
 
-from utils.helpers import get_root_path
+from utils.helpers import get_data_path
 
-root_path = get_root_path()
+data_path = get_data_path()
 
 
 class ISICDataset(Dataset):
@@ -31,7 +31,8 @@ class ISICDataset(Dataset):
         mask_id = f'{image_id}_mask_{idx % self.per_image_mask}'
         image_path = os.path.join(self.image_dir, f"{image_id}_raw.jpg")
         mask_path = os.path.join(self.image_dir, f"{mask_id}.png")
-        reward_path = os.path.join(self.image_dir, f"{mask_id}_normalized_reward.txt")
+        reward_path = os.path.join(
+            self.image_dir, f"{mask_id}_normalized_reward.txt")
 
         try:
             image = self.transform(Image.open(image_path))
@@ -52,8 +53,8 @@ class ISICDataset(Dataset):
 
 def get_data_loader(batch_size=2, shuffle=True, test_batch_size=4, test_shuffle=False):
     # 路径
-    train_dir = os.path.join(root_path, 'data/processed/train/resized')
-    test_dir = os.path.join(root_path, 'data/processed/test/resized')
+    train_dir = os.path.join(data_path, 'processed/train/resized')
+    test_dir = os.path.join(data_path, 'processed/test/resized')
 
     # 创建数据集实例
     train_dataset = ISICDataset(image_dir=train_dir)
