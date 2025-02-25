@@ -1,5 +1,6 @@
 import math
 import os
+from typing import List, Optional, Set
 import numpy as np
 from collections import defaultdict
 from segment_anything import sam_model_registry, SamPredictor
@@ -15,102 +16,176 @@ checkpoints_path = get_checkpoints_path()
 
 
 class GlobalInfo:
-    def __init__(self, image, predictor: SamPredictor, reward_model: RewardPredictionModel, image_shape=(1024, 1024)):
-        self.image = image.permute(1, 2, 0).cpu().numpy()
-        self.batch_image = image.unsqueeze(0)
+    def __init__(self, image: torch.Tensor, predictor: SamPredictor, reward_model: RewardPredictionModel):
+        # (C, H, W)
+        self.image = image
+        # 将(C,H,W)转换为(H,W,C)
+        self.image_array = image.permute(1, 2, 0).cpu().numpy()
+        # 扩充为(1, H, W, C)
+        self.single_image = image.unsqueeze(0)
         self.batch_size = 4
-        self.batch_image_tensor = image.unsqueeze(
+        # 扩充为(B, H, W, C)
+        self.batch_image = image.unsqueeze(
             0).repeat(self.batch_size, 1, 1, 1).to(device)
-        self.width = image_shape[0]
-        self.height = image_shape[1]
+        # 获取图像的宽和高
+        self.width = image.shape[2]
+        self.height = image.shape[1]
+        # 初始化 SAM 预测器和 RewardModel
         self.predictor = predictor
+        predictor.set_image(self.image_array)
         self.reward_model = reward_model
+        # 设置 MCTS 参数
+        # 预测max_points个点(这里最好是能兼容到最后一层)
         self.max_points = 5
+        # 每次网格划分为K*K块
         self.grid_size = 4
+        # 网格划分的最大深度
         self.max_depth = int(
             math.log(min(self.width, self.height), self.grid_size))
-        predictor.set_image(self.image)
+
+
+class Action:
+    def __init__(self, action: list = None, label: int = None):
+        self.action = action
+        self.label = label
+
+    def __eq__(self, other):
+        if isinstance(other, Action):
+            return self.action == other.action and self.label == other.label
+        return False
+
+    def __hash__(self):
+        return hash((tuple(self.action), self.label))
 
 
 class State:
-    def __init__(self, taken_action=[], action=[]):
-        self.action = action
+    def __init__(self, global_info: GlobalInfo, taken_action: Optional[Set[Action]] = None, cur_action: Optional[Action] = None):
+        if taken_action is None:
+            taken_action = set()
+        if cur_action is None:
+            cur_action = Action()
         self.taken_action = taken_action
-        self.grid_size = global_info.grid_size
+        self.cur_action = cur_action
+        self.global_info = global_info
         self.reward = None
 
     def get_legal_actions(self):
-        if len(self.action) >= global_info.max_depth:
+        grid_size = self.global_info.grid_size
+        actions:List[Action] = []
+
+        # 初始节点
+        if self.cur_action.action is None:
+            for j in range(grid_size * grid_size):
+                base_action = []
+                base_action.append(j)
+                actions.append(Action(base_action, 1))
+                actions.append(Action(base_action, 0))
+            return actions
+        # 超过最大深度
+        if len(self.cur_action.action) >= self.global_info.max_depth:
             return []
-        actions = []
-        for i in range(len(self.action)):
-            for j in range(self.grid_size ** 2):
-                new_action = self.action[:i]
-                new_action.append(j)
+        # 探索每一层的可能性
+        for i in range(len(self.cur_action.action)):
+            for j in range(grid_size * grid_size):
+                # todo过滤之前遍历过的点
+                base_action = self.cur_action.action[:i]
+                if j != self.cur_action.action[i]:
+                    base_action.append(j)
+                    new_action = Action(base_action, 1)
+                    if new_action not in self.taken_action:
+                        actions.append(new_action)
+                    new_action = Action(base_action, 0)
+                    if new_action not in self.taken_action:
+                        actions.append(new_action)
+        # 探索更下一层的可能性
+        for j in range(grid_size * grid_size):
+            base_action = self.cur_action.action.copy()
+            base_action.append(j)
+            new_action = Action(base_action, 1)
+            if new_action not in self.taken_action:
                 actions.append(new_action)
-        for j in range(self.grid_size ** 2):
-            new_action = self.action.copy()
-            new_action.append(j)
-            actions.append(new_action)
+            new_action = Action(base_action, 0)
+            if new_action not in self.taken_action:
+                actions.append(new_action)
+        # for i in range(len(self.cur_action)):
+        #     for j in range(self.grid_size ** 2):
+        #         new_action = self.cur_action[:i]
+        #         new_action.append(j)
+        #         actions.append(new_action)
+        # for j in range(self.grid_size ** 2):
+        #     new_action = self.cur_action.copy()
+        #     new_action.append(j)
+        #     actions.append(new_action)
         # 排除 taken_action 中的部分
-        filtered_actions = []
-        for action in actions:
-            if not any(set(action) == set(taken) for taken in self.taken_action):
-                filtered_actions.append(action)
+        # filtered_actions = []
+        # for action in actions:
+        #     if not any(set(action) == set(taken) for taken in self.taken_action):
+        #         filtered_actions.append(action)
+        # todo 根据规则排序actions
+        return actions
 
-        return filtered_actions
-
-    def take_action(self, action):
+    def take_action(self, action: Action):
         new_taken_action = self.taken_action.copy()
-        new_taken_action.append(action)
-        return State(taken_action=new_taken_action, action=action)
+        new_taken_action.add(action)
+        return State(taken_action=new_taken_action, cur_action=action, global_info=self.global_info)
 
-    def action2point(self, action, image_width: int, image_height: int):
+    def action2point(self, action: Action):
+        image_width = self.global_info.width
+        image_height = self.global_info.height
+        grid_size = self.global_info.grid_size
         base_x = 0
         base_y = 0
-        for i in range(len(action)):
-            base_x += image_width // self.grid_size * \
-                (action[i] // self.grid_size)
-            base_y += image_height // self.grid_size * \
-                (action[i] % self.grid_size)
-            image_width //= self.grid_size
-            image_height //= self.grid_size
+        for i in range(len(action.action)):
+            base_x += image_width // grid_size * \
+                (action.action[i] // grid_size)
+            base_y += image_height // grid_size * \
+                (action.action[i] % grid_size)
+            image_width //= grid_size
+            image_height //= grid_size
         return (base_x + image_width // 2, base_y + image_height // 2)
 
-    def all_points(self, global_info):
-        image_width = global_info.width
-        image_height = global_info.height
+    def all_action_points(self):
         points = []
         for action in self.taken_action:
-            points.append(self.action2point(action, image_width, image_height))
+            points.append(self.action2point(action))
         return points
 
-    def get_reward(self, global_info: GlobalInfo):
+    def all_action_labels(self):
+        labels = []
+        for action in self.taken_action:
+            labels.append(action.label)
+        return labels
+
+    def get_reward(self):
         if (self.reward is not None):
             return self.reward
-        points = np.array(self.all_points(global_info))
-        labels = np.ones(len(points)).astype(int)
+        points = np.array(self.all_action_points())
+        labels = np.array(self.all_action_labels())
         # 使用 SAM 生成新的 mask
-        new_masks, _, _ = global_info.predictor.predict(
+        new_masks, _, _ = self.global_info.predictor.predict(
             points, labels, multimask_output=False)
         # 使用 RewardModel 计算 reward
         mask = torch.Tensor(new_masks[0]).unsqueeze(0).unsqueeze(0).to(device)
         with torch.no_grad():
-            reward = global_info.reward_model(global_info.batch_image, mask)
+            reward = self.global_info.reward_model(
+                global_info.single_image, mask)
             self.reward = reward.item()
             return self.reward
 
 
 class Node:
     def __init__(self, state: 'State', parent: 'Node' = None):
-        self.state = state
-        self.parent = parent
-        self.children = []
+        self.state: State = state
+        self.parent: Node = parent
+        self.children: list[Node] = []
         self.visits = 0
         self.reward = 0
 
     def is_fully_expanded(self):
-        return len(self.children) == len(self.state.get_legal_actions())
+        legal_actions = self.state.get_legal_actions()
+        if not legal_actions:
+            return True
+        return len(self.children) == len(legal_actions)
 
     def best_child(self, exploration_weight=1.0):
         weights = [
@@ -120,12 +195,12 @@ class Node:
         ]
         return self.children[np.argmax(weights)]
 
-    def add_child(self, child_state):
+    def add_child(self, child_state: 'State'):
         child_node = Node(child_state, parent=self)
         self.children.append(child_node)
         return child_node
 
-    def update(self, reward):
+    def update(self, reward: float):
         self.reward += reward
         self.visits += 1
 
@@ -153,21 +228,22 @@ class MCTS:
         all_labels = []
         for action in legal_actions:
             new_state = node.state.take_action(action)
-            all_points.append(new_state.all_points(self.global_info))
-            all_labels.append(np.ones(len(all_points[-1])).astype(int))
+            all_points.append(new_state.all_action_points())
+            all_labels.append(new_state.all_action_labels())
         batch_reward_idx = self.get_batch_reward_idx(all_points, all_labels)
 
         return node.add_child(node.state.take_action(legal_actions[batch_reward_idx]))
 
     def simulate(self, node: Node):
         current_state = node.state
-        while len(current_state.action) < 3:
+        while len(current_state.cur_action.action) < self.global_info.max_depth:
             legal_actions = current_state.get_legal_actions()
+            # todo 替换随机策略
             action = legal_actions[np.random.randint(len(legal_actions))]
             current_state = current_state.take_action(action)
-        return current_state.get_reward(self.global_info)
+        return current_state.get_reward()
 
-    def backpropagate(self, node, reward):
+    def backpropagate(self, node: Node, reward: float):
         while node is not None:
             node.update(reward)
             node = node.parent
@@ -198,7 +274,7 @@ class MCTS:
             )
             with torch.no_grad():
                 rewards = global_info.reward_model(
-                    self.global_info.batch_image_tensor, mask)
+                    self.global_info.batch_image, mask)
                 rewards_list.append(rewards)
 
         # 合并所有小批次的奖励
@@ -264,19 +340,26 @@ def sam_seg_cal_reward(predictor, points, labels, ground_truth, image_id):
     mask_with_points = Image.fromarray(ground_truth_image).convert("RGB")
     draw = ImageDraw.Draw(mask_with_points)
     radius = 6
-    for idx, point in enumerate(points):
+    for idx, (point, label) in enumerate(zip(points, labels)):
         x, y = point
-        draw.ellipse((x - radius, y - radius, x + radius,
-                     y + radius), outline='red', width=2)
-
+        
+        # 根据标签值选择颜色
+        color = 'green' if label == 0 else 'red'
+        
+        # 绘制圆形
+        draw.ellipse((x - radius, y - radius, x + radius, y + radius), outline=color, width=2)
+    
         # 使用 textbbox 计算文本边界框大小
         text = str(idx)
         bbox = draw.textbbox((0, 0), text, font=None)
         text_size = (bbox[2] - bbox[0], bbox[3] - bbox[1])
-
+    
+        # 计算文本位置，确保文本居中
         text_x = x - text_size[0] // 2
         text_y = y - text_size[1] // 2
-        draw.text((text_x, text_y), text, fill='red')
+        
+        # 绘制文本
+        draw.text((text_x, text_y), text, fill=color)
     mask_with_points_path = os.path.join(
         results_dir, f'{image_id}_mask_with_points.png')
     mask_with_points.save(mask_with_points_path)
@@ -295,11 +378,11 @@ if __name__ == '__main__':
         image = data['image'][0].to(device)
         mask = data['mask'][0].to(device)
 
-        reward_model = load_model(model_name='2025-02-24_20-49-30.pth')
+        reward_model = load_model(model_name='2025-02-25_11-13-40.pth')
         # 初始化 RewardModel
         global_info = GlobalInfo(
-            image=image, predictor=predictor, reward_model=reward_model, image_shape=image.shape[1:])
-        initial_state = State()
+            image=image, predictor=predictor, reward_model=reward_model)
+        initial_state = State(global_info=global_info)
         root = Node(initial_state)
 
         max_points = global_info.max_points
@@ -307,9 +390,10 @@ if __name__ == '__main__':
         for _ in range(max_points):
             mcts = MCTS(best_node, global_info)
             best_node = mcts.search(num_simulations=40)
-        points = np.array(best_node.state.all_points(global_info))
-        reward = best_node.state.get_reward(global_info)
-        labels = np.ones(len(points)).astype(int)
+        points = np.array(best_node.state.all_action_points())
+        labels = np.array(best_node.state.all_action_labels())
+
+        reward = best_node.state.get_reward()
         image_id = data['image_id'][0]
         sam_seg_cal_reward(predictor=predictor, points=points,
                            labels=labels, ground_truth=mask[0].cpu().numpy(), image_id=image_id,)
