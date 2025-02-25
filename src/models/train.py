@@ -24,7 +24,7 @@ def train(old_check_point=None):
     criterion = nn.MSELoss()  # 修改为分类损失函数
     optimizer = optim.Adam(model.parameters(), lr=lr)
     # 训练循环
-    epochs = 50
+    epochs = 10
     train_dataloader, test_dataloader = get_data_loader()
     scaler = torch.amp.GradScaler(device)
 
@@ -50,29 +50,15 @@ def train(old_check_point=None):
             train_loss += loss.item()
             train_steps += 1
         log_writer.add_scalar('Loss/train', train_loss / train_steps, epoch)
+        print(
+            f"Epoch [{epoch + 1}/{epochs}], Train Loss:{train_loss / train_steps}")
         if epoch % 5 == 0:
             # 评估模型在测试集上的表现
-            test_loss = 0.0
-            test_steps = 0
-            model.eval()
-            with torch.no_grad():
-                for batch in tqdm(test_dataloader, desc=f'Test {epoch + 1}'):
-                    image = batch['image'].to(device)
-                    mask = batch['mask'].to(device)
-                    reward = batch['reward'].float().unsqueeze(1).to(device)
-
-                    reward_pred = model(image, mask)
-                    loss = criterion(reward_pred, reward)
-                    test_loss += loss.item()
-                    test_steps += 1
-            log_writer.add_scalar('Loss/test', test_loss / test_steps, epoch)
-            print(
-                f"Epoch [{epoch + 1}/{epochs}], Train Loss:{train_loss / train_steps}, Test Loss: {test_loss / test_steps}")
+            test(model, test_dataloader, log_writer, epoch, criterion)
             torch.save(model.state_dict(), os.path.join(
                 checkpoints_path, f'{datetime.now().strftime("%Y-%m-%d_%H-%M-%S")}.pth'))
-        else:
-            print(
-                f"Epoch [{epoch + 1}/{epochs}], Train Loss:{train_loss / train_steps}")
+
+    test(model, test_dataloader, log_writer, epoch, criterion)
     latest_model_name = f'{datetime.now().strftime("%Y-%m-%d_%H-%M-%S")}.pth'
     torch.save(model.state_dict(), os.path.join(
         checkpoints_path, latest_model_name))
@@ -85,7 +71,26 @@ def train(old_check_point=None):
     log_writer.close()
 
 
+def test(model, test_dataloader, log_writer, epoch, criterion):
+    # 评估模型在测试集上的表现
+    test_loss = 0.0
+    test_steps = 0
+    model.eval()
+    with torch.no_grad():
+        for batch in tqdm(test_dataloader, desc=f'Test {epoch + 1}'):
+            image = batch['image'].to(device)
+            mask = batch['mask'].to(device)
+            reward = batch['reward'].float().unsqueeze(1).to(device)
+
+            reward_pred = model(image, mask)
+            loss = criterion(reward_pred, reward)
+            test_loss += loss.item()
+            test_steps += 1
+    log_writer.add_scalar('Loss/test', test_loss / test_steps, epoch)
+    print(f"Epoch [{epoch + 1}], Test Loss: {test_loss / test_steps}")
+
+
 if __name__ == '__main__':
     old_check_point = os.path.join(
-        checkpoints_path, '2025-01-18_15-31-04.pth')
-    train(old_check_point=None)
+        checkpoints_path, '2025-02-25_11-13-40.pth')
+    train(old_check_point=old_check_point)
