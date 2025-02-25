@@ -33,6 +33,7 @@ def get_log_path():
     os.makedirs(res, exist_ok=True)
     return res
 
+
 def get_mcts_path():
     res = os.path.join(get_root_path(), 'result', 'mcts', dataset)
     os.makedirs(res, exist_ok=True)
@@ -40,7 +41,9 @@ def get_mcts_path():
 
 
 def get_log_writer():
-    return SummaryWriter(get_log_path(), f'{datetime.now().strftime("%Y-%m-%d_%H-%M-%S")}')
+    time_str = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+
+    return SummaryWriter(os.path.join(get_log_path(), time_str), time_str)
 
 
 def setup_seed(seed: int = 2024):

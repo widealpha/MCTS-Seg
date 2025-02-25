@@ -24,7 +24,7 @@ def train(old_check_point=None):
     criterion = nn.MSELoss()  # 修改为分类损失函数
     optimizer = optim.Adam(model.parameters(), lr=lr)
     # 训练循环
-    epochs = 10
+    epochs = 50
     train_dataloader, test_dataloader = get_data_loader()
     scaler = torch.amp.GradScaler(device)
 
@@ -52,9 +52,9 @@ def train(old_check_point=None):
         log_writer.add_scalar('Loss/train', train_loss / train_steps, epoch)
         print(
             f"Epoch [{epoch + 1}/{epochs}], Train Loss:{train_loss / train_steps}")
+        # 评估模型在测试集上的表现
+        test(model, test_dataloader, log_writer, epoch, criterion)
         if epoch % 5 == 0:
-            # 评估模型在测试集上的表现
-            test(model, test_dataloader, log_writer, epoch, criterion)
             torch.save(model.state_dict(), os.path.join(
                 checkpoints_path, f'{datetime.now().strftime("%Y-%m-%d_%H-%M-%S")}.pth'))
 
@@ -93,4 +93,4 @@ def test(model, test_dataloader, log_writer, epoch, criterion):
 if __name__ == '__main__':
     old_check_point = os.path.join(
         checkpoints_path, '2025-02-25_11-13-40.pth')
-    train(old_check_point=old_check_point)
+    train(old_check_point=None)

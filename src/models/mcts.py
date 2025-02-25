@@ -1,5 +1,6 @@
 import math
 import os
+import random
 from typing import List, Optional, Set
 import numpy as np
 from collections import defaultdict
@@ -16,7 +17,21 @@ checkpoints_path = get_checkpoints_path()
 
 
 class GlobalInfo:
-    def __init__(self, image: torch.Tensor, predictor: SamPredictor, reward_model: RewardPredictionModel):
+    def __init__(self, predictor: SamPredictor, reward_model: RewardPredictionModel):
+        # 初始化 SAM 预测器和 RewardModel
+        self.predictor = predictor
+        self.reward_model = reward_model
+        # 设置 MCTS 参数
+        # 预测max_points个点
+        self.max_points = 3
+        # 每次网格划分为K*K块
+        self.grid_size = 4
+        # 每次模拟的次数
+        self.num_simulations = 50
+        # 允许使用背景点
+        self.enable_background = False
+
+    def set_image(self, image: torch.Tensor):
         # (C, H, W)
         self.image = image
         # 将(C,H,W)转换为(H,W,C)
@@ -30,24 +45,23 @@ class GlobalInfo:
         # 获取图像的宽和高
         self.width = image.shape[2]
         self.height = image.shape[1]
-        # 初始化 SAM 预测器和 RewardModel
-        self.predictor = predictor
         predictor.set_image(self.image_array)
-        self.reward_model = reward_model
-        # 设置 MCTS 参数
-        # 预测max_points个点(这里最好是能兼容到最后一层)
-        self.max_points = 5
-        # 每次网格划分为K*K块
-        self.grid_size = 4
         # 网格划分的最大深度
         self.max_depth = int(
             math.log(min(self.width, self.height), self.grid_size))
+
+    def __str__(self):
+        return (f"GlobalInfo(max_points={self.max_points}, grid_size={self.grid_size}, "
+                f"num_simulations={self.num_simulations}, enable_background={self.enable_background})")
 
 
 class Action:
     def __init__(self, action: list = None, label: int = None):
         self.action = action
         self.label = label
+
+    def __str__(self):
+        return f"Action({self.action}, {self.label})"
 
     def __eq__(self, other):
         if isinstance(other, Action):
@@ -71,15 +85,15 @@ class State:
 
     def get_legal_actions(self):
         grid_size = self.global_info.grid_size
-        actions:List[Action] = []
+        actions: List[Action] = []
 
         # 初始节点
         if self.cur_action.action is None:
             for j in range(grid_size * grid_size):
-                base_action = []
-                base_action.append(j)
+                base_action = [j]
                 actions.append(Action(base_action, 1))
-                actions.append(Action(base_action, 0))
+                if global_info.enable_background:
+                    actions.append(Action(base_action, 0))
             return actions
         # 超过最大深度
         if len(self.cur_action.action) >= self.global_info.max_depth:
@@ -94,9 +108,10 @@ class State:
                     new_action = Action(base_action, 1)
                     if new_action not in self.taken_action:
                         actions.append(new_action)
-                    new_action = Action(base_action, 0)
-                    if new_action not in self.taken_action:
-                        actions.append(new_action)
+                    if global_info.enable_background:
+                        new_action = Action(base_action, 0)
+                        if new_action not in self.taken_action:
+                            actions.append(new_action)
         # 探索更下一层的可能性
         for j in range(grid_size * grid_size):
             base_action = self.cur_action.action.copy()
@@ -104,9 +119,10 @@ class State:
             new_action = Action(base_action, 1)
             if new_action not in self.taken_action:
                 actions.append(new_action)
-            new_action = Action(base_action, 0)
-            if new_action not in self.taken_action:
-                actions.append(new_action)
+            if global_info.enable_background:
+                new_action = Action(base_action, 0)
+                if new_action not in self.taken_action:
+                    actions.append(new_action)
         # for i in range(len(self.cur_action)):
         #     for j in range(self.grid_size ** 2):
         #         new_action = self.cur_action[:i]
@@ -133,16 +149,39 @@ class State:
         image_width = self.global_info.width
         image_height = self.global_info.height
         grid_size = self.global_info.grid_size
-        base_x = 0
-        base_y = 0
-        for i in range(len(action.action)):
-            base_x += image_width // grid_size * \
-                (action.action[i] // grid_size)
-            base_y += image_height // grid_size * \
-                (action.action[i] % grid_size)
-            image_width //= grid_size
-            image_height //= grid_size
-        return (base_x + image_width // 2, base_y + image_height // 2)
+
+        x_start = 0
+        y_start = 0
+        current_w = image_width
+        current_h = image_height
+
+        for num in action.action:
+            cell_w = current_w / grid_size
+            cell_h = current_h / grid_size
+
+            row = num // grid_size
+            col = num % grid_size
+
+            x_start += col * cell_w
+            y_start += row * cell_h
+
+            current_w = cell_w
+            current_h = cell_h
+
+        x_center = x_start + current_w / 2
+        y_center = y_start + current_h / 2
+        return (x_center, y_center)
+        # base_x = 0
+        # base_y = 0
+
+        # for i in range(len(action.action)):
+        #     base_x += image_width // grid_size * \
+        #         (action.action[i] // grid_size)
+        #     base_y += image_height // grid_size * \
+        #         (action.action[i] % grid_size)
+        #     image_width //= grid_size
+        #     image_height //= grid_size
+        # return (base_x + image_width // 2, base_y + image_height // 2)
 
     def all_action_points(self):
         points = []
@@ -179,29 +218,29 @@ class Node:
         self.parent: Node = parent
         self.children: list[Node] = []
         self.visits = 0
-        self.reward = 0
+        self.q_value = 0
+        self.untried_actions = state.get_legal_actions()
 
     def is_fully_expanded(self):
-        legal_actions = self.state.get_legal_actions()
-        if not legal_actions:
-            return True
-        return len(self.children) == len(legal_actions)
+        return len(self.untried_actions) == 0
 
-    def best_child(self, exploration_weight=1.0):
-        weights = [
-            (child.reward / child.visits) + exploration_weight *
-            np.sqrt(2 * np.log(self.visits) / child.visits)
+    def select_child(self, exploration_weight=1.414):
+        scores = [
+            (child.q_value / child.visits) +
+            exploration_weight *
+            math.sqrt(math.log(self.visits) / child.visits)
             for child in self.children
         ]
-        return self.children[np.argmax(weights)]
+        return self.children[scores.index(max(scores))]
 
-    def add_child(self, child_state: 'State'):
-        child_node = Node(child_state, parent=self)
+    def add_child(self, action,  child_state: 'State'):
+        child_node = Node(state=child_state, parent=self)
         self.children.append(child_node)
+        self.untried_actions.remove(action)
         return child_node
 
     def update(self, reward: float):
-        self.reward += reward
+        self.q_value += reward
         self.visits += 1
 
 
@@ -212,41 +251,69 @@ class MCTS:
 
     def search(self, num_simulations) -> Node:
         for _ in tqdm(range(num_simulations), desc='MCTS', position=1, leave=False):
-            node = self.select(self.root)
+            node = self.select()
             reward = self.simulate(node)
             self.backpropagate(node, reward)
-        return self.root.best_child(exploration_weight=0)
+        return self.root.select_child(exploration_weight=0)
 
-    def select(self, node: Node):
-        while node.is_fully_expanded() and node.children:
-            node = node.best_child()
-        return self.expand(node)
+    def select(self):
+        current = self.root
+        while not current.is_fully_expanded() and current.children:
+            current = current.select_child()
+        # 如果有未扩展的动作则扩展
+        if current.untried_actions:
+            return self.expand(current)
+        return current
 
     def expand(self, node: Node):
-        legal_actions = node.state.get_legal_actions()
-        all_points = []
-        all_labels = []
+        """扩展阶段：创建新子节点"""
+        # action = random.choice(node.untried_actions)
+        # new_state = node.state.take_action(action)
+        # return node.add_child(action, new_state)
+        legal_actions = node.untried_actions
+        max_reward = -np.inf
         for action in legal_actions:
             new_state = node.state.take_action(action)
-            all_points.append(new_state.all_action_points())
-            all_labels.append(new_state.all_action_labels())
-        batch_reward_idx = self.get_batch_reward_idx(all_points, all_labels)
+            reward = self.get_reward(new_state)
+            if reward > max_reward:
+                max_reward = reward
+                best_action = action
+        return node.add_child(action, node.state.take_action(best_action))
+        # all_points = []
+        # all_labels = []
+        # for action in legal_actions:
+        #     new_state = node.state.take_action(action)
+        #     all_points.append(new_state.all_action_points())
+        #     all_labels.append(new_state.all_action_labels())
+        # # 选取使得当前reward最大的Action
+        # batch_reward_idx = self.get_batch_reward_idx(all_points, all_labels)
 
-        return node.add_child(node.state.take_action(legal_actions[batch_reward_idx]))
+        # return node.add_child(node.state.take_action(legal_actions[batch_reward_idx]))
 
     def simulate(self, node: Node):
         current_state = node.state
-        while len(current_state.cur_action.action) < self.global_info.max_depth:
-            legal_actions = current_state.get_legal_actions()
-            # todo 替换随机策略
-            action = legal_actions[np.random.randint(len(legal_actions))]
-            current_state = current_state.take_action(action)
-        return current_state.get_reward()
+        # while len(current_state.cur_action.action) < self.global_info.max_depth:
+        #     legal_actions = current_state.get_legal_actions()
+        #     # todo 替换随机策略
+        #     action = legal_actions[np.random.randint(len(legal_actions))]
+        #     current_state = current_state.take_action(action)
+        return self.get_reward(current_state)
 
     def backpropagate(self, node: Node, reward: float):
         while node is not None:
             node.update(reward)
             node = node.parent
+
+    def get_reward(self, state: State):
+        points = np.array(state.all_action_points())
+        labels = np.array(state.all_action_labels())
+        new_masks, _, _ = self.global_info.predictor.predict(
+            points, labels, multimask_output=False)
+        mask = torch.Tensor(new_masks[0]).unsqueeze(0).unsqueeze(0).to(device)
+        with torch.no_grad():
+            reward = self.global_info.reward_model(
+                self.global_info.single_image, mask)
+        return reward.item()
 
     def get_batch_reward_idx(self, points, labels):
         batch_size = self.global_info.batch_size
@@ -342,22 +409,19 @@ def sam_seg_cal_reward(predictor, points, labels, ground_truth, image_id):
     radius = 6
     for idx, (point, label) in enumerate(zip(points, labels)):
         x, y = point
-        
         # 根据标签值选择颜色
         color = 'green' if label == 0 else 'red'
-        
         # 绘制圆形
-        draw.ellipse((x - radius, y - radius, x + radius, y + radius), outline=color, width=2)
-    
+        draw.ellipse((x - radius, y - radius, x + radius,
+                     y + radius), outline=color, width=2)
         # 使用 textbbox 计算文本边界框大小
         text = str(idx)
         bbox = draw.textbbox((0, 0), text, font=None)
         text_size = (bbox[2] - bbox[0], bbox[3] - bbox[1])
-    
         # 计算文本位置，确保文本居中
         text_x = x - text_size[0] // 2
         text_y = y - text_size[1] // 2
-        
+
         # 绘制文本
         draw.text((text_x, text_y), text, fill=color)
     mask_with_points_path = os.path.join(
@@ -373,15 +437,18 @@ def sam_seg_cal_reward(predictor, points, labels, ground_truth, image_id):
 # 示例用法
 if __name__ == '__main__':
     test_loader = get_mcts_test_loader()
-    predictor = SamPredictor(sam)  # 初始化 SAM
+    # 初始化 SAM和RewardModel
+    predictor = SamPredictor(sam)
+    reward_model = load_model(model_name='2025-02-25_17-16-51.pth')
+    global_info = GlobalInfo(predictor=predictor, reward_model=reward_model)
+    results_dir = get_mcts_path()
+    os.makedirs(results_dir, exist_ok=True)
+    with open(os.path.join(results_dir, 'info.log'), 'w') as f:
+        f.write(f"Global Info: {global_info}\n")
     for data in tqdm(test_loader, desc='Test Image', position=0):
         image = data['image'][0].to(device)
         mask = data['mask'][0].to(device)
-
-        reward_model = load_model(model_name='2025-02-25_11-13-40.pth')
-        # 初始化 RewardModel
-        global_info = GlobalInfo(
-            image=image, predictor=predictor, reward_model=reward_model)
+        global_info.set_image(image)
         initial_state = State(global_info=global_info)
         root = Node(initial_state)
 
@@ -389,19 +456,20 @@ if __name__ == '__main__':
         best_node = root
         for _ in range(max_points):
             mcts = MCTS(best_node, global_info)
-            best_node = mcts.search(num_simulations=40)
+            best_node = mcts.search(
+                num_simulations=global_info.num_simulations)
         points = np.array(best_node.state.all_action_points())
         labels = np.array(best_node.state.all_action_labels())
 
         reward = best_node.state.get_reward()
         image_id = data['image_id'][0]
         sam_seg_cal_reward(predictor=predictor, points=points,
-                           labels=labels, ground_truth=mask[0].cpu().numpy(), image_id=image_id,)
+                           labels=labels, ground_truth=mask[0].cpu().numpy(), image_id=image_id)
         # 将最佳点和奖励写入文件
-        results_dir = os.path.join('results', 'mcts')
-        os.makedirs(results_dir, exist_ok=True)
+
         result_file_path = os.path.join(
             results_dir, f'{image_id}_best_points_and_reward.txt')
         with open(result_file_path, 'w') as f:
             f.write(f"Best points: {points.tolist()}\n")
+            f.write(f"Best labels: {labels.tolist()}\n")
             f.write(f"Reward: {reward}\n")
