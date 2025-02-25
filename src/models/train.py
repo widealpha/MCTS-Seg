@@ -25,8 +25,7 @@ def train(old_check_point=None):
     optimizer = optim.Adam(model.parameters(), lr=lr)
     # 训练循环
     epochs = 50
-    train_dataloader, test_dataloader = get_data_loader(
-        batch_size=2, test_batch_size=4)
+    train_dataloader, test_dataloader = get_data_loader()
     scaler = torch.amp.GradScaler(device)
 
     for epoch in range(epochs):

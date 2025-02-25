@@ -8,7 +8,7 @@ from PIL import Image, ImageDraw
 from tqdm import tqdm
 from models.model import RewardPredictionModel
 from data.mcts_loader import get_mcts_test_loader
-from utils.helpers import get_checkpoints_path, get_log_path, get_mcts_path, setup_seed, load_sam, device
+from utils.helpers import get_checkpoints_path, get_mcts_path, setup_seed, load_sam, device
 setup_seed()
 sam = load_sam()
 checkpoints_path = get_checkpoints_path()
@@ -136,8 +136,7 @@ class MCTS:
         self.global_info = global_info
 
     def search(self, num_simulations) -> Node:
-        # 这里添加tqdm
-        for _ in tqdm(range(num_simulations), desc='MCTS', position=1):
+        for _ in tqdm(range(num_simulations), desc='MCTS', position=1, leave=False):
             node = self.select(self.root)
             reward = self.simulate(node)
             self.backpropagate(node, reward)
@@ -292,7 +291,7 @@ def sam_seg_cal_reward(predictor, points, labels, ground_truth, image_id):
 if __name__ == '__main__':
     test_loader = get_mcts_test_loader()
     predictor = SamPredictor(sam)  # 初始化 SAM
-    for data in tqdm(test_loader, desc='Test Image', position=0, leave=True):
+    for data in tqdm(test_loader, desc='Test Image', position=0):
         image = data['image'][0].to(device)
         mask = data['mask'][0].to(device)
 
