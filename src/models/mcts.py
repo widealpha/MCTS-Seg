@@ -439,7 +439,7 @@ if __name__ == '__main__':
     test_loader = get_mcts_test_loader()
     # 初始化 SAM和RewardModel
     predictor = SamPredictor(sam)
-    reward_model = load_model(model_name='2025-02-25_17-16-51.pth')
+    reward_model = load_model(model_name='latest.pth')
     global_info = GlobalInfo(predictor=predictor, reward_model=reward_model)
     results_dir = get_mcts_path()
     os.makedirs(results_dir, exist_ok=True)
@@ -473,3 +473,15 @@ if __name__ == '__main__':
             f.write(f"Best points: {points.tolist()}\n")
             f.write(f"Best labels: {labels.tolist()}\n")
             f.write(f"Reward: {reward}\n")
+    with open(os.path.join(results_dir, 'info.log'), 'a') as f:
+        # 计算所有f'{image_id}_iou.txt'的均值并追加进去
+        iou_results = []
+        for file in os.listdir(results_dir):
+            if file.endswith('_iou.txt'):
+                with open(os.path.join(results_dir, file), 'r') as iou_f:
+                    iou = float(iou_f.read())
+                    iou_results.append(iou)
+        mean_iou = np.mean(iou_results)
+        f.write(f"Mean IoU: {mean_iou}\n")
+        
+    print("Done!")

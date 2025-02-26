@@ -62,6 +62,8 @@ def train(old_check_point=None):
     latest_model_name = f'{datetime.now().strftime("%Y-%m-%d_%H-%M-%S")}.pth'
     torch.save(model.state_dict(), os.path.join(
         checkpoints_path, latest_model_name))
+    torch.save(model.state_dict(), os.path.join(
+        checkpoints_path, 'latest.pth'))
     log_writer.add_text('Model/lr', f'{lr}')
     log_writer.add_text('Model/criterion', f'{criterion}')
     log_writer.add_text(f'Model/model', f'{model}')
