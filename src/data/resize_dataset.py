@@ -151,9 +151,10 @@ def resize_and_compare_images(in_dir, out_dir, raw_dir, size=(1024, 1024), mode=
         raw_image = Image.open(raw_image_path).convert('RGB')
 
         # Resize images
-        image = image.resize(size)
-        ground_truth = ground_truth.resize(size)
-        raw_image = raw_image.resize(size, Image.LANCZOS)
+        if size is not None:
+            image = image.resize(size)
+            ground_truth = ground_truth.resize(size)
+            raw_image = raw_image.resize(size, Image.LANCZOS)
 
         mask = np.array(image)
         ground_truth = np.array(ground_truth)
