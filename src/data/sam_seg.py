@@ -123,6 +123,91 @@ def sam_auto_mask(in_dir, out_dir, ground_truth_dir):
             json.dump(metadata, json_file, indent=4)
     else:
         print(f"The folder '{image_folder}' does not exist.")
+        
+
+def sam_random_point_mask(point_number, in_dir, ground_truth_dir, out_dir):
+    '''
+    生成随机点标注的mask
+    '''
+    image_folder = in_dir
+    ground_truth_folder = ground_truth_dir
+    output_folder = os.path.join(out_dir, 'best_rewards')
+    os.makedirs(output_folder, exist_ok=True)
+
+    if not os.path.exists(image_folder) or not os.path.exists(ground_truth_folder):
+        print(
+            f"One of the folders '{image_folder}' or '{ground_truth_folder}' does not exist.")
+        return
+
+    image_files = [f for f in os.listdir(
+        image_folder) if f.lower().endswith(('.png', '.jpg', '.jpeg'))]
+    image_files.sort()
+    image_files = filter_images(image_files)
+
+    predictor = SamPredictor(sam)
+
+    for image_file in tqdm(image_files, desc="Processing images"):
+        image_path = os.path.join(image_folder, image_file)
+        image_id = extract_image_id(image_file)
+        ground_truth_files = [f for f in os.listdir(
+            ground_truth_folder) if f.startswith(image_id)]
+        if len(ground_truth_files) == 0:
+            print(f"Ground truth for {image_file} does not exist.")
+            continue
+        ground_truth_file = ground_truth_files[0]
+        ground_truth_path = os.path.join(
+            ground_truth_folder, ground_truth_file)
+
+        try:
+            with Image.open(image_path) as img, Image.open(ground_truth_path) as gt:
+                img = img.convert('RGB')
+                img_array = np.array(img, dtype=np.uint8)
+                gt_array = np.array(gt.convert('L'), dtype=np.uint8)
+
+                # height, width = gt_array.shape
+
+                points = []
+                labels = []
+                # 获取gt_array中的point_number个>0的点
+                y_indices, x_indices = np.where(gt_array > 0)
+                if len(y_indices) > 0:
+                    indices = np.random.choice(len(y_indices), min(point_number, len(y_indices)), replace=False)
+                    for idx in indices:
+                        points.append([x_indices[idx], y_indices[idx]])
+                        labels.append(1)
+
+                # for _ in range(point_number):
+                #     x = np.random.randint(0, width)
+                #     y = np.random.randint(0, height)
+                #     points.append([x, y])
+                #     labels.append(1 if gt_array[y, x] > 0 else 0)
+
+                points = np.array(points)
+                labels = np.array(labels)
+
+                predictor.set_image(img_array)
+                masks, _, _ = predictor.predict(points, labels)
+                # 遍历所有masks取一个最佳的mask
+                best_mask = None
+                best_reward = 0
+                best_reward_index = 0
+                for i, mask in enumerate(masks):
+                    reward = rewards_function(mask, gt_array)
+                    if reward > best_reward:
+                        best_mask = mask
+                        best_reward = reward
+                        best_reward_index = i
+                # 保存best_mask到指定的文件，文件名规则为原来的文件名_mask_index.png
+                mask_image = Image.fromarray(
+                    best_mask.astype('uint8') * 255)
+                mask_filename = f"{image_id}_mask_{best_reward_index}.png"
+                mask_image.save(os.path.join(
+                    output_folder, mask_filename))
+
+                with open(os.path.join(output_folder, f"{image_id}_best_score.txt"), 'w') as f:
+                    f.write(f"{best_reward}\n")
+        except Exception as e:
+            print(f"Error processing image {image_file}: {e}")
 
 
 def sam_point_mask(point_number, grid_size, in_dir, ground_truth_dir, out_dir):

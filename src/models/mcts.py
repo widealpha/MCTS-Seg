@@ -483,5 +483,17 @@ if __name__ == '__main__':
                     iou_results.append(iou)
         mean_iou = np.mean(iou_results)
         f.write(f"Mean IoU: {mean_iou}\n")
-        
+    with open(os.path.join(results_dir, 'info.log'), 'a') as f:
+        # 计算所有f'{image_id}_iou.txt'的均值并追加进去
+        reward_results = []
+        for file in os.listdir(results_dir):
+            if file.endswith('_reward.txt'):
+                with open(os.path.join(results_dir, file), 'r') as iou_f:
+                    for line in file:
+                        if line.startswith("Reward:"):
+                            reward = float(line.split(":")[1].strip())
+                            reward_results.append(reward)
+        mean_reward = np.mean(reward_results)
+        f.write(f"Mean Reward: {mean_reward}\n")
+
     print("Done!")

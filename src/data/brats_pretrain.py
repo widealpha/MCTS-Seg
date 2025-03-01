@@ -29,12 +29,15 @@ def process(mode='train'):
     os.makedirs(output_image_dir, exist_ok=True)
     os.makedirs(output_gt_dir, exist_ok=True)
     subdirs = os.listdir(input_dir)
+    subdirs = sorted(subdirs)
     subdirs = [d for d in subdirs if os.path.isdir(os.path.join(input_dir, d))]
-    # 分离测试集和训练集,90%训练集，10%测试集
+    # 分离测试集和训练集,90%训练集，10%测试集,按照文件夹名字排序，每9个训练一个测试
+    test_subdirs = subdirs[::10]
+    train_subdirs = [d for i, d in enumerate(subdirs) if i % 10 != 0]
     if mode == 'train':
-        subdirs = subdirs[:int(len(subdirs)*0.9)]
+        subdirs = train_subdirs
     else:
-        subdirs = subdirs[int(len(subdirs)*0.9):]
+        subdirs = test_subdirs
     subdirs = sorted(subdirs)
     for subdir in tqdm(subdirs, desc='Processing subdirectories'):
         for file in os.listdir(os.path.join(input_dir, subdir)):
@@ -63,10 +66,15 @@ def process(mode='train'):
                         (np.max(seg_slice) - np.min(seg_slice))
                     seg_slice = (seg_slice * 255).astype(np.uint8)
                     image_slice = image_data[:, :, i]
-                    image_slice = (image_slice - np.min(image_slice)) / \
-                        (np.max(image_slice) - np.min(image_slice))
+                    # # 获取image_slice除去0意外的最小值
+                    # min_value = np.min(image_slice[image_slice > 0])
+                    # max_value = np.max(image_slice)
+                    # # 仅仅改变非0的值映射到1-255之间
+                    # image_slice[image_slice > 0] = (image_slice[image_slice > 0] - 1) / \
+                    #     (max_value - min_value) * 254 + 1
+                    # 使用minmax标准化，并映射到0-255之间
+                    image_slice = normalize_image(image_slice, 'minmax')
                     image_slice = (image_slice * 255).astype(np.uint8)
-
                     seg_img = Image.fromarray(seg_slice, mode='L')
                     image_img = Image.fromarray(image_slice, mode='L')
                     output_filename = f"{image_id}_{i}.png"
@@ -76,6 +84,7 @@ def process(mode='train'):
                         output_image_dir, output_filename)
                     seg_img.save(seg_output_path)
                     image_img.save(image_output_path)
+
 
 if __name__ == '__main__':
     process('train')

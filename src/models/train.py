@@ -67,9 +67,9 @@ def train(old_check_point=None):
     log_writer.add_text('Model/lr', f'{lr}')
     log_writer.add_text('Model/criterion', f'{criterion}')
     log_writer.add_text(f'Model/model', f'{model}')
-    dummy_input = (torch.randn(1, 3, 512, 512).to(device),
-                   torch.randn(1, 1, 512, 512).to(device))
-    log_writer.add_graph(model, input_to_model=dummy_input)
+    # dummy_input = (torch.randn(1, 3, 512, 512).to(device),
+    #                torch.randn(1, 1, 512, 512).to(device))
+    # log_writer.add_graph(model, input_to_model=dummy_input)
     log_writer.close()
 
 

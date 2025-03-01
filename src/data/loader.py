@@ -51,7 +51,7 @@ class ImageDataset(Dataset):
         }
 
 
-def get_data_loader(batch_size=4, shuffle=True, test_batch_size=8, test_shuffle=False):
+def get_data_loader(batch_size=16, shuffle=True, test_batch_size=16, test_shuffle=False):
     # 路径
     train_dir = os.path.join(data_path, 'processed/train/resized')
     test_dir = os.path.join(data_path, 'processed/test/resized')
