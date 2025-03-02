@@ -15,17 +15,21 @@ setup_seed()
 
 def train(old_check_point=None):
     log_writer = get_log_writer()
+    train_dataloader, test_dataloader = get_data_loader()
+    first_sample = train_dataloader.dataset[0]
+    sample_shape = first_sample['image'].shape
+    sample_width, sample_height = sample_shape[1], sample_shape[2]
     lr = 1e-4
     # 初始化模型、损失函数和优化器
-    model = RewardPredictionModel().to(device)
+    model = RewardPredictionModel(
+        sample_width=sample_width, sample_height=sample_height).to(device)
     if old_check_point:
         model.load_state_dict(torch.load(old_check_point))
         print(f"Loaded model from {old_check_point}")
     criterion = nn.MSELoss()  # 修改为分类损失函数
     optimizer = optim.Adam(model.parameters(), lr=lr)
     # 训练循环
-    epochs = 50
-    train_dataloader, test_dataloader = get_data_loader()
+    epochs = 80
     scaler = torch.amp.GradScaler(device)
 
     for epoch in range(epochs):

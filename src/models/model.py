@@ -6,7 +6,7 @@ from unet_model import UNet
 
 
 class RewardPredictionModel(nn.Module):
-    def __init__(self, *args, **kwargs) -> None:
+    def __init__(self, sample_width=260, sample_height=260, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         self.unet = UNet(n_channels=4, n_classes=1)
         # 定义卷积层
@@ -17,7 +17,8 @@ class RewardPredictionModel(nn.Module):
         # 定义全连接层
         # self.fc1 = nn.Linear(16 * 128 * 128, 16)
         # 16*width/4*height/4
-        self.fc1 = nn.Linear(self._get_conv_output_size((4, 240, 240)), 16)
+        self.fc1 = nn.Linear(
+            self._get_conv_output_size((4, sample_width, sample_height)), 16)
         self.fc2 = nn.Linear(16, 1)
 
     def _get_conv_output_size(self, shape):

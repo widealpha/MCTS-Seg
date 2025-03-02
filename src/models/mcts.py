@@ -350,9 +350,10 @@ class MCTS:
         return all_rewards.argmax().item()
 
 
-def load_model(model_name):
+def load_model(model_name, sample_width, sample_height):
     model_path = os.path.join(checkpoints_path, model_name)
-    model = RewardPredictionModel().to(device)
+    model = RewardPredictionModel(
+        sample_width=sample_width, sample_height=sample_height).to(device)
     model.load_state_dict(torch.load(model_path, weights_only=True))
     # model = torch.load(model_path).to(device)
     model.eval()
@@ -437,9 +438,12 @@ def sam_seg_cal_reward(predictor, points, labels, ground_truth, image_id):
 # 示例用法
 if __name__ == '__main__':
     test_loader = get_mcts_test_loader()
+    first_sample = test_loader.dataset[0]
+    sample_shape = first_sample['image'].shape
+    sample_width, sample_height = sample_shape[1], sample_shape[2]
     # 初始化 SAM和RewardModel
     predictor = SamPredictor(sam)
-    reward_model = load_model(model_name='latest.pth')
+    reward_model = load_model(model_name='latest.pth', sample_width=sample_width, sample_height=sample_height)
     global_info = GlobalInfo(predictor=predictor, reward_model=reward_model)
     results_dir = get_mcts_path()
     os.makedirs(results_dir, exist_ok=True)
@@ -484,12 +488,12 @@ if __name__ == '__main__':
         mean_iou = np.mean(iou_results)
         f.write(f"Mean IoU: {mean_iou}\n")
     with open(os.path.join(results_dir, 'info.log'), 'a') as f:
-        # 计算所有f'{image_id}_iou.txt'的均值并追加进去
+        # 计算所有f'{image_id}_reward.txt'的均值并追加进去
         reward_results = []
         for file in os.listdir(results_dir):
             if file.endswith('_reward.txt'):
-                with open(os.path.join(results_dir, file), 'r') as iou_f:
-                    for line in file:
+                with open(os.path.join(results_dir, file), 'r') as reward_f:
+                    for line in reward_f:
                         if line.startswith("Reward:"):
                             reward = float(line.split(":")[1].strip())
                             reward_results.append(reward)
