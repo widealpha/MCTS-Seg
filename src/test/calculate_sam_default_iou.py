@@ -39,7 +39,8 @@ def calculate_mean_iou(mask_dir, ground_truth_dir):
             if os.path.exists(mask_path):
                 mask = Image.open(mask_path).convert('L')
                 # 调整 ground_truth 的大小与 mask 一致
-                ground_truth_resized = ground_truth.resize(mask.size, Image.NEAREST)
+                ground_truth_resized = ground_truth.resize(
+                    mask.size, Image.NEAREST)
                 mask = np.array(mask)
                 ground_truth_resized = np.array(ground_truth_resized)
                 iou = calculate_iou(mask, ground_truth_resized)
@@ -50,22 +51,40 @@ def calculate_mean_iou(mask_dir, ground_truth_dir):
 
 
 def main():
-    ground_truth_dir = os.path.join(data_path, 'raw/test/ground_truth')
-    one_fg = os.path.join(data_path, 'processed/test/random_point_masks_1/largest_connected')
-    # auto_masks = os.path.join(data_path, 'processed/test/auto_masks/best_rewards')
-    one_bg_one_fg = os.path.join(data_path, 'processed/test/random_point_masks_2/largest_connected')
-    one_bg_two_fg = os.path.join(data_path, 'processed/test/random_point_masks_3/largest_connected')
+    mode = 'test'
+    ground_truth_dir = os.path.join(data_path, f'raw/{mode}/ground_truth')
+    one_fg = os.path.join(
+        data_path, f'processed/{mode}/random_point_masks_1/largest_connected')
+
+    one_bg_one_fg = os.path.join(
+        data_path, f'processed/{mode}/random_point_masks_2/largest_connected')
+    one_bg_two_fg = os.path.join(
+        data_path, f'processed/{mode}/random_point_masks_3/largest_connected')
     mcts = os.path.join(mcts_path)
     ground_truth = ground_truth_dir
 
     iou_mean = calculate_mean_iou(one_fg, ground_truth_dir)
-    print(f"One Fg Mean IoU: {iou_mean}")
+    print(f"[Largest Connected] One Fg Mean IoU: {iou_mean}")
     iou_mean = calculate_mean_iou(one_bg_one_fg, ground_truth_dir)
-    print(f"One Bg One Fg Mean IoU: {iou_mean}")
+    print(f"[Largest Connected] One Bg One Fg Mean IoU: {iou_mean}")
     iou_mean = calculate_mean_iou(one_bg_two_fg, ground_truth_dir)
-    print(f"One Bg Two Fg Mean IoU: {iou_mean}")
+    print(f"[Largest Connected] One Bg Two Fg Mean IoU: {iou_mean}")
     iou_mean = calculate_mean_iou(mcts, ground_truth_dir)
     print(f"MCTS Mean IoU: {iou_mean}")
+
+    one_fg = os.path.join(
+        data_path, f'processed/{mode}/random_point_masks_1/best_rewards')
+    one_bg_one_fg = os.path.join(
+        data_path, f'processed/{mode}/random_point_masks_2/best_rewards')
+    one_bg_two_fg = os.path.join(
+        data_path, f'processed/{mode}/random_point_masks_3/best_rewards')
+    iou_mean = calculate_mean_iou(one_fg, ground_truth_dir)
+    print(f"[Best Reward] One Fg Mean IoU: {iou_mean}")
+    iou_mean = calculate_mean_iou(one_bg_one_fg, ground_truth_dir)
+    print(f"[Best Reward] One Bg One Fg Mean IoU: {iou_mean}")
+    iou_mean = calculate_mean_iou(one_bg_two_fg, ground_truth_dir)
+    print(f"[Best Reward] One Bg Two Fg Mean IoU: {iou_mean}")
+
 
 if __name__ == '__main__':
     main()
