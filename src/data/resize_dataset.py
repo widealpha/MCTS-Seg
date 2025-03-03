@@ -178,12 +178,13 @@ def resize_and_compare_images(in_dir, out_dir, raw_dir, size=(1024, 1024), mode=
             output_dir, f"{image_id}_{mask_id}_iou.txt")
         with open(iou_result_path, 'w') as f:
             f.write(f"{iou}\n")
-
-    if mode == 'train':
-        train_mean, train_std = normalize_rewards(rewards, out_dir)
-        return train_mean, train_std
-    elif mode == 'test':
-        normalize_test_rewards(rewards, train_mean, train_std, out_dir)
+    train_mean, train_std = normalize_rewards(rewards, out_dir)
+    return train_mean, train_std
+    # if mode == 'train':
+    #     train_mean, train_std = normalize_rewards(rewards, out_dir)
+    #     return train_mean, train_std
+    # elif mode == 'test':
+    #     normalize_test_rewards(rewards, train_mean, train_std, out_dir)
 
 
 if __name__ == '__main__':

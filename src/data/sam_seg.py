@@ -168,19 +168,28 @@ def sam_random_point_mask(point_number, in_dir, ground_truth_dir, out_dir):
 
                 points = []
                 labels = []
-                # 获取gt_array中的point_number个>0的点
-                y_indices, x_indices = np.where(gt_array > 0)
-                if len(y_indices) > 0:
-                    indices = np.random.choice(len(y_indices), min(point_number, len(y_indices)), replace=False)
-                    for idx in indices:
-                        points.append([x_indices[idx], y_indices[idx]])
-                        labels.append(1)
+                # 获取gt_array中的point_number / 2个=0的点
+                # 获取gt_array中的point_number - (point_number / 2)个>0的点
+                y_indices_0, x_indices_0 = np.where(gt_array == 0)
+                y_indices_1, x_indices_1 = np.where(gt_array > 0)
 
-                # for _ in range(point_number):
-                #     x = np.random.randint(0, width)
-                #     y = np.random.randint(0, height)
-                #     points.append([x, y])
-                #     labels.append(1 if gt_array[y, x] > 0 else 0)
+                if len(y_indices_0) > 0:
+                    indices_0 = np.random.choice(len(y_indices_0), min(point_number // 2, len(y_indices_0)), replace=False)
+                    for idx in indices_0:
+                        points.append([x_indices_0[idx], y_indices_0[idx]])
+                        labels.append(0)
+
+                if len(y_indices_1) > 0:
+                    indices_1 = np.random.choice(len(y_indices_1), min(point_number - (point_number // 2), len(y_indices_1)), replace=False)
+                    for idx in indices_1:
+                        points.append([x_indices_1[idx], y_indices_1[idx]])
+                        labels.append(1)
+                # y_indices, x_indices = np.where(gt_array > 0)
+                # if len(y_indices) > 0:
+                #     indices = np.random.choice(len(y_indices), min(point_number, len(y_indices)), replace=False)
+                #     for idx in indices:
+                #         points.append([x_indices[idx], y_indices[idx]])
+                #         labels.append(1)
 
                 points = np.array(points)
                 labels = np.array(labels)
