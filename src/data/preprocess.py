@@ -64,7 +64,7 @@ def generate_data(train=False, use_best_point=False):
             sam_random_point_mask(point_number=i_dir[0], in_dir=raw_image_dir, out_dir=i_dir[1],
                                   ground_truth_dir=ground_truth_dir)
             extract_largest_connected_component(
-                in_dir=os.path.join(i_dir[1], 'best_rewards'), out_dir=os.path.join(i_dir[1], 'largerst_connected'))
+                in_dir=os.path.join(i_dir[1], 'best_rewards'), out_dir=os.path.join(i_dir[1], 'largest_connected'))
 
         # 生成随机单点掩码
         # sam_point_mask(point_number=1, grid_size=20, in_dir=raw_image_dir, out_dir=point_masks_dir,
@@ -87,7 +87,7 @@ def generate_data(train=False, use_best_point=False):
     copy_best_rewards(in_dir=ground_truth_dir, out_dir=expanded_dir,
                       ground_truth_dir=ground_truth_dir, index=0, is_ground_truth=True)
     for i_dir in random_point_masks_dir:
-        copy_best_rewards(in_dir=os.path.join(i_dir[1], 'largerst_connected'), out_dir=expanded_dir,
+        copy_best_rewards(in_dir=os.path.join(i_dir[1], 'largest_connected'), out_dir=expanded_dir,
                           ground_truth_dir=ground_truth_dir, index=i_dir[0])
     # copy_best_rewards(in_dir=os.path.join(auto_masks_dir, 'best_rewards'), out_dir=expanded_dir,
     #                   ground_truth_dir=ground_truth_dir, index=1)
@@ -98,7 +98,7 @@ def generate_data(train=False, use_best_point=False):
 
     # 调整图像大小并生成奖励
     resize_and_compare_images(
-        in_dir=expanded_dir, out_dir=resized_dir, raw_dir=raw_image_dir, size=(512, 512))
+        in_dir=expanded_dir, out_dir=resized_dir, raw_dir=raw_image_dir, size=None)
 
 
 if __name__ == '__main__':

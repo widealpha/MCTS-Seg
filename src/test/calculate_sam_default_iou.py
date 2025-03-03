@@ -1,10 +1,14 @@
 import os
-import json
+import re
 import numpy as np
 from PIL import Image
+from tqdm import tqdm
 
-from utils.helpers import get_root_path
-root_path = get_root_path()
+from utils.helpers import get_data_path, get_mcts_path
+from data.helpers import extract_image_id
+
+data_path = get_data_path()
+mcts_path = get_mcts_path()
 
 
 def calculate_iou(mask, ground_truth):
@@ -17,71 +21,51 @@ def calculate_iou(mask, ground_truth):
     return intersection / union
 
 
-def main():
-    metadata_path = os.path.join(
-        root_path, 'data/processed/test/ISBI2016_ISIC/auto_masks', 'mask_metadata.json')
-    ground_truth_dir = os.path.join(
-        root_path, 'data/raw/test/ISBI2016_ISIC/ground_truth')
-    auto_masks_dir = os.path.join(
-        root_path, 'data/processed/test/ISBI2016_ISIC/auto_masks')
-
-    with open(metadata_path, 'r') as f:
-        metadata = json.load(f)
-
+def calculate_mean_iou(mask_dir, ground_truth_dir):
     iou_results = []
-    images = {}
-    for item in metadata:
-        image_id = item['image_file'].replace('.jpg', '')
-        if image_id not in images:
-            images[image_id] = []
-        images[image_id].append(item)
+    images = os.listdir(ground_truth_dir)
+    images.sort()
+    image_ids = [extract_image_id(image) for image in images]
 
-    for image_id, items in images.items():
-        ground_truth_path = os.path.join(
-            ground_truth_dir, image_id + '_Segmentation.png')
-        ground_truth = Image.open(ground_truth_path).convert('1')
-        ground_truth = np.array(ground_truth)
-        best_iou = 0.0
-        first_image = None
-        for item in items:
-            if item['predicted_iou'] > best_iou:
-                best_iou = item['predicted_iou']
-                first_image = item['mask_file']
+    for image, image_id in tqdm(zip(images, image_ids), total=len(images)):
+        ground_truth_path = os.path.join(ground_truth_dir, image)
+        ground_truth = Image.open(ground_truth_path).convert('L')
 
-        if first_image:
-            mask_path = os.path.join(auto_masks_dir, first_image)
-            mask = Image.open(mask_path).convert('1')
-            mask = np.array(mask)
-            iou = calculate_iou(mask, ground_truth)
-            iou_results.append(iou)
+        # 使用正则表达式匹配符合条件的文件
+        mask_files = [f for f in os.listdir(mask_dir) if re.match(
+            f"{image_id}_mask(_\d)*.png", f)]
+        for mask_file in mask_files:
+            mask_path = os.path.join(mask_dir, mask_file)
+            if os.path.exists(mask_path):
+                mask = Image.open(mask_path).convert('L')
+                # 调整 ground_truth 的大小与 mask 一致
+                ground_truth_resized = ground_truth.resize(mask.size, Image.NEAREST)
+                mask = np.array(mask)
+                ground_truth_resized = np.array(ground_truth_resized)
+                iou = calculate_iou(mask, ground_truth_resized)
+                iou_results.append(iou)
 
     mean_iou = np.mean(iou_results)
-    print(f"SAM IOU Mean IoU: {mean_iou}")
+    return mean_iou
 
-    iou_results.clear()
-    for image_id, items in images.items():
-        ground_truth_path = os.path.join(
-            ground_truth_dir, image_id + '_Segmentation.png')
-        ground_truth = Image.open(ground_truth_path).convert('1')
-        ground_truth = np.array(ground_truth)
-        first_image = items[0]['mask_file']
 
-        if first_image:
-            mask_path = os.path.join(auto_masks_dir, first_image)
-            mask = Image.open(mask_path).convert('1')
-            mask = np.array(mask)
-            iou = calculate_iou(mask, ground_truth)
-            iou_results.append(iou)
+def main():
+    ground_truth_dir = os.path.join(data_path, 'raw/test/ground_truth')
+    one_fg = os.path.join(data_path, 'processed/test/random_point_masks_1/largest_connected')
+    # auto_masks = os.path.join(data_path, 'processed/test/auto_masks/best_rewards')
+    one_bg_one_fg = os.path.join(data_path, 'processed/test/random_point_masks_2/largest_connected')
+    one_bg_two_fg = os.path.join(data_path, 'processed/test/random_point_masks_3/largest_connected')
+    mcts = os.path.join(mcts_path)
+    ground_truth = ground_truth_dir
 
-    mean_iou1 = np.mean(iou_results)
-    print(f"First Mask Mean IoU: {mean_iou1}")
-
-    results_path = os.path.join(
-        root_path, 'results/average_iou', 'sam_auto_best_iou.txt')
-    with open(results_path, 'w') as f:
-        f.write(f"Best SAM IOU Mean IoU: {mean_iou}\n")
-        f.write(f"First Mask Mean IoU: {mean_iou1}\n")
-
+    iou_mean = calculate_mean_iou(one_fg, ground_truth_dir)
+    print(f"One Fg Mean IoU: {iou_mean}")
+    iou_mean = calculate_mean_iou(one_bg_one_fg, ground_truth_dir)
+    print(f"One Bg One Fg Mean IoU: {iou_mean}")
+    iou_mean = calculate_mean_iou(one_bg_two_fg, ground_truth_dir)
+    print(f"One Bg Two Fg Mean IoU: {iou_mean}")
+    iou_mean = calculate_mean_iou(mcts, ground_truth_dir)
+    print(f"MCTS Mean IoU: {iou_mean}")
 
 if __name__ == '__main__':
     main()

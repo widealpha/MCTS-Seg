@@ -58,7 +58,8 @@ def get_data_loader(batch_size=16, shuffle=True, test_batch_size=16, test_shuffl
 
     # 创建数据集实例
     train_dataset = ImageDataset(image_dir=train_dir)
-    test_dataset = ImageDataset(image_dir=test_dir)
+    # 测试集只使用ground_truth不使用增强数据集
+    test_dataset = ImageDataset(image_dir=test_dir, per_image_mask=1)
 
     # 创建数据加载器
     train_dataloader = DataLoader(
