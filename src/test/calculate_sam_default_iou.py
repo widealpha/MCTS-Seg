@@ -4,10 +4,11 @@ import numpy as np
 from PIL import Image
 from tqdm import tqdm
 
-from utils.helpers import get_data_path, get_mcts_path
+from utils.helpers import get_data_path, get_mcts_path, get_root_path
 from data.helpers import extract_image_id
 
 data_path = get_data_path()
+root_path = get_root_path()
 mcts_path = get_mcts_path()
 
 
@@ -51,8 +52,12 @@ def calculate_mean_iou(mask_dir, ground_truth_dir):
 
 
 def main():
-    mode = 'test'
+    mode = 'train'
     ground_truth_dir = os.path.join(data_path, f'raw/{mode}/ground_truth')
+    mcts = os.path.join(mcts_path)
+
+    iou_mean = calculate_mean_iou(mcts, ground_truth_dir)
+    print(f"MCTS Mean IoU: {iou_mean}")
     one_fg = os.path.join(
         data_path, f'processed/{mode}/random_point_masks_1/largest_connected')
 
@@ -60,8 +65,6 @@ def main():
         data_path, f'processed/{mode}/random_point_masks_2/largest_connected')
     one_bg_two_fg = os.path.join(
         data_path, f'processed/{mode}/random_point_masks_3/largest_connected')
-    mcts = os.path.join(mcts_path)
-    ground_truth = ground_truth_dir
 
     iou_mean = calculate_mean_iou(one_fg, ground_truth_dir)
     print(f"[Largest Connected] One Fg Mean IoU: {iou_mean}")
@@ -69,8 +72,7 @@ def main():
     print(f"[Largest Connected] One Bg One Fg Mean IoU: {iou_mean}")
     iou_mean = calculate_mean_iou(one_bg_two_fg, ground_truth_dir)
     print(f"[Largest Connected] One Bg Two Fg Mean IoU: {iou_mean}")
-    iou_mean = calculate_mean_iou(mcts, ground_truth_dir)
-    print(f"MCTS Mean IoU: {iou_mean}")
+    
 
     one_fg = os.path.join(
         data_path, f'processed/{mode}/random_point_masks_1/best_rewards')
@@ -87,4 +89,8 @@ def main():
 
 
 if __name__ == '__main__':
+    # mcts = os.path.join(root_path, f'results/mcts-40s-3points')
+    # ground_truth_dir = os.path.join(data_path, f'raw/test/ground_truth')
+    # iou = calculate_mean_iou(mcts, ground_truth_dir)
+    # print(f"MCTS Mean IoU: {iou}")
     main()
