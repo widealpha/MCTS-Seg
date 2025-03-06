@@ -52,12 +52,10 @@ def calculate_mean_iou(mask_dir, ground_truth_dir):
 
 
 def main():
-    mode = 'train'
+    mode = 'test'
     ground_truth_dir = os.path.join(data_path, f'raw/{mode}/ground_truth')
     mcts = os.path.join(mcts_path)
 
-    iou_mean = calculate_mean_iou(mcts, ground_truth_dir)
-    print(f"MCTS Mean IoU: {iou_mean}")
     one_fg = os.path.join(
         data_path, f'processed/{mode}/random_point_masks_1/largest_connected')
 
@@ -72,7 +70,9 @@ def main():
     print(f"[Largest Connected] One Bg One Fg Mean IoU: {iou_mean}")
     iou_mean = calculate_mean_iou(one_bg_two_fg, ground_truth_dir)
     print(f"[Largest Connected] One Bg Two Fg Mean IoU: {iou_mean}")
-    
+
+    iou_mean = calculate_mean_iou(mcts, ground_truth_dir)
+    print(f"MCTS Mean IoU: {iou_mean}")
 
     one_fg = os.path.join(
         data_path, f'processed/{mode}/random_point_masks_1/best_rewards')

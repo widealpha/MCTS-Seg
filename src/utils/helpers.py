@@ -39,6 +39,11 @@ def get_mcts_path():
     os.makedirs(res, exist_ok=True)
     return res
 
+def get_test_model_path():
+    res = os.path.join(get_root_path(), 'result', 'test_model', dataset)
+    os.makedirs(res, exist_ok=True)
+    return res
+
 
 def get_log_writer():
     time_str = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")

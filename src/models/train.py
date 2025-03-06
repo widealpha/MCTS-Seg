@@ -19,8 +19,8 @@ def train(old_check_point=None):
     first_sample = train_dataloader.dataset[0]
     sample_shape = first_sample['image'].shape
     sample_width, sample_height = sample_shape[1], sample_shape[2]
-    lr = 1e-4
-    weight_decay = 0
+    lr = 1e-5
+    weight_decay = 1e-4
     # 初始化模型、损失函数和优化器
     model = RewardPredictionModel(
         sample_width=sample_width, sample_height=sample_height).to(device)
@@ -30,7 +30,7 @@ def train(old_check_point=None):
     criterion = nn.MSELoss() 
     optimizer = optim.Adam(model.parameters(), lr=lr, weight_decay=weight_decay)
     # 训练循环
-    epochs = 60
+    epochs = 100
     scaler = torch.amp.GradScaler(device)
 
     for epoch in range(epochs):
@@ -70,11 +70,12 @@ def train(old_check_point=None):
     torch.save(model.state_dict(), os.path.join(
         checkpoints_path, 'latest.pth'))
     log_writer.add_text('Model/lr', f'{lr}')
+    log_writer.add_text('Model/weight_decay', f'{weight_decay}')
     log_writer.add_text('Model/criterion', f'{criterion}')
     log_writer.add_text(f'Model/model', f'{model}')
-    # dummy_input = (torch.randn(1, 3, 512, 512).to(device),
-    #                torch.randn(1, 1, 512, 512).to(device))
-    # log_writer.add_graph(model, input_to_model=dummy_input)
+    dummy_input = (torch.randn(1, 3, sample_width, sample_height).to(device),
+                   torch.randn(1, 1, sample_width, sample_height).to(device))
+    log_writer.add_graph(model, input_to_model=dummy_input)
     log_writer.close()
 
 
@@ -99,5 +100,5 @@ def test(model, test_dataloader, log_writer, epoch, criterion):
 
 if __name__ == '__main__':
     old_check_point = os.path.join(
-        checkpoints_path, '2025-02-25_11-13-40.pth')
+        checkpoints_path, 'latest.pth')
     train(old_check_point=None)

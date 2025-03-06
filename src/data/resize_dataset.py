@@ -50,6 +50,7 @@ def rewards_function(mask, ground_truth):
 
     # 将品质按照不同区间划分成 12 档，将奖励映射到 0-11 之间
     reward = max(adjusted_iou, 0)  # 确保奖励值不为负
+    # reward = iou
 
     # if reward >= 0.8:
     #     reward = 8 + int((reward - 0.8) / 0.05)
@@ -63,13 +64,14 @@ def rewards_function(mask, ground_truth):
     return reward
 
 
-def normalize_rewards(rewards, output_dir):
+def normalize_rewards(rewards, output_dir, mean_reward=None, std_reward=None):
     # 提取奖励值
     reward_values = [r[0] for r in rewards]
 
     # 计算全局的均值和标准差
-    mean_reward = np.mean(reward_values)
-    std_reward = np.std(reward_values)
+    if mean_reward is None or std_reward is None:
+        mean_reward = np.mean(reward_values)
+        std_reward = np.std(reward_values)
 
     # 对所有 reward 进行归一化并保存
     normalized_rewards = [(r - mean_reward) /
@@ -102,7 +104,7 @@ def normalize_test_rewards(rewards, train_mean, train_std, output_dir):
             f.write(f"{norm_reward}\n")
 
 
-def resize_and_compare_images(in_dir, out_dir, raw_dir, size=(1024, 1024), mode='train', train_mean=None, train_std=None):
+def resize_and_compare_images(in_dir, out_dir, raw_dir, size=(1024, 1024), train_mean=None, train_std=None):
     """
     获取 in_dir 目录下的所有图片，并将它们处理到统一的大小，然后与 mask_0 进行对比计算奖励。
     同时从 raw_dir 中获取原始图像并进行相同的调整。
@@ -110,7 +112,6 @@ def resize_and_compare_images(in_dir, out_dir, raw_dir, size=(1024, 1024), mode=
     :param out_dir: 输出图片目录
     :param raw_dir: 原始图片目录
     :param size: 处理后的图片大小
-    :param mode: 模式（train 或 test）
     :param train_mean: 训练集的均值（仅在测试模式下使用）
     :param train_std: 训练集的标准差（仅在测试模式下使用）
     """
@@ -178,13 +179,11 @@ def resize_and_compare_images(in_dir, out_dir, raw_dir, size=(1024, 1024), mode=
             output_dir, f"{image_id}_{mask_id}_iou.txt")
         with open(iou_result_path, 'w') as f:
             f.write(f"{iou}\n")
-    train_mean, train_std = normalize_rewards(rewards, out_dir)
-    return train_mean, train_std
-    # if mode == 'train':
-    #     train_mean, train_std = normalize_rewards(rewards, out_dir)
-    #     return train_mean, train_std
-    # elif mode == 'test':
-    #     normalize_test_rewards(rewards, train_mean, train_std, out_dir)
+    if train_mean is None or train_std is None:
+        train_mean, train_std = normalize_rewards(rewards, out_dir)
+        return train_mean, train_std
+    else:
+        normalize_rewards(rewards, out_dir, train_mean, train_std)
 
 
 if __name__ == '__main__':
