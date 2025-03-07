@@ -11,7 +11,7 @@ data_path = get_data_path()
 
 
 class ImageDataset(Dataset):
-    def __init__(self, image_dir, per_image_mask=4):
+    def __init__(self, image_dir, per_image_mask=3):
         """
         :param image_dir: 原图像所在目录
         """

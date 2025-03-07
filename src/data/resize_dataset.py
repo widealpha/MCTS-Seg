@@ -91,12 +91,26 @@ def normalize_rewards(rewards, output_dir, mean_reward=None, std_reward=None):
     return mean_reward, std_reward
 
 
-def normalize_test_rewards(rewards, train_mean, train_std, output_dir):
+def normalize_test_rewards(rewards, train_mean, train_std, output_dir, normalize='minmax'):
     # 提取奖励值
     reward_values = [r[0] for r in rewards]
+    normalized_rewards = [r for r in reward_values]
 
-    # 使用训练集的均值和标准差对测试集的奖励进行归一化
-    normalized_rewards = [(r - train_mean) / train_std for r in reward_values]
+    if normalize == 'minmax':
+        # 计算最小值和最大值
+        min_reward = min(reward_values)
+        max_reward = max(reward_values)
+
+        # 避免除零错误
+        if max_reward == min_reward:
+            normalized_rewards = [0.5] * len(reward_values)  # 如果所有奖励相同，全部设为 0.5
+        else:
+            normalized_rewards = [
+                (r - min_reward) / (max_reward - min_reward) for r in reward_values]
+    elif normalize == 'zscore':
+        # 使用训练集的均值和标准差对测试集的奖励进行归一化
+        normalized_rewards = [(r - train_mean) / train_std for r in reward_values]
+
     for (reward, image_id, mask_id), norm_reward in zip(rewards, normalized_rewards):
         norm_reward_path = os.path.join(
             output_dir, f"{image_id}_{mask_id}_normalized_reward.txt")

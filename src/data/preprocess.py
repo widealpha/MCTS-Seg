@@ -29,7 +29,7 @@ def generate_data(train=False, use_best_point=False):
     # 使用ground_truth中随机点分割后存储mask的目录
     point_masks_dir = os.path.join(processed_path, data_type, 'point_masks')
     random_point_masks_dir = [(i, os.path.join(
-        processed_path, data_type, f'random_point_masks_{i}')) for i in range(3, 4)]
+        processed_path, data_type, f'random_point_masks_{i}')) for i in range(1, 4)]
     # 对point_masks_dir中最佳数据取最大联通分量mask的目录
     connected_point_masks_dir = os.path.join(
         processed_path, data_type, 'connected_point_masks')
@@ -53,7 +53,8 @@ def generate_data(train=False, use_best_point=False):
     for i_dir in random_point_masks_dir:
         copy_best_rewards(in_dir=os.path.join(i_dir[1], 'largest_connected'), out_dir=expanded_dir,
                           ground_truth_dir=ground_truth_dir, index=i_dir[0])
-    image_size = (512, 512)
+    # image_size = (512, 512)
+    image_size = (240, 240)
     if train:
         # 调整图像大小并生成奖励
         resize_and_compare_images(

@@ -30,7 +30,7 @@ def train(old_check_point=None):
     criterion = nn.MSELoss() 
     optimizer = optim.Adam(model.parameters(), lr=lr, weight_decay=weight_decay)
     # 训练循环
-    epochs = 100
+    epochs = 60
     scaler = torch.amp.GradScaler(device)
 
     for epoch in range(epochs):

@@ -10,14 +10,52 @@ from matplotlib import pyplot as plt
 
 
 def normalize_image(slice_data, method='minmax'):
+    MIN_BOUND = 0
+    MAX_BOUND = 700
+    slice_data[slice_data > MAX_BOUND] = MAX_BOUND
+    slice_data[slice_data < MIN_BOUND] = MIN_BOUND
     if method == 'minmax':
         # 将数据标准化到[0, 1]之间
-        slice_data = (slice_data - np.min(slice_data)) / \
-            (np.max(slice_data) - np.min(slice_data))
+        # slice_data = (slice_data - np.min(slice_data)) / \
+        #     (np.max(slice_data) - np.min(slice_data))
+        slice_data = (slice_data - MIN_BOUND) / (MAX_BOUND - MIN_BOUND)
     elif method == 'zscore':
         # 使用均值和标准差进行标准化
         slice_data = (slice_data - np.mean(slice_data)) / np.std(slice_data)
     return slice_data
+
+
+def crop_nonzero_region(img):
+    """
+    裁剪图片中的非全零区域
+    参数:
+      img: numpy 数组，支持2D或3D数据
+    返回:
+      裁剪后的图片
+    """
+    # 使用 np.nonzero() 获取所有非零元素的索引
+    nonzero_indices = np.nonzero(img)
+
+    # 如果图像全为零，则直接返回原图
+    if len(nonzero_indices[0]) == 0:
+        return img
+
+    # 对于每个维度，找到最小和最大的索引
+    min_indices = [np.min(idx) for idx in nonzero_indices]
+    max_indices = [np.max(idx) for idx in nonzero_indices]
+
+    # 根据数据维度进行裁剪
+    if img.ndim == 2:
+        cropped = img[min_indices[0]:max_indices[0] +
+                      1, min_indices[1]:max_indices[1]+1]
+    elif img.ndim == 3:
+        cropped = img[min_indices[0]:max_indices[0]+1,
+                      min_indices[1]:max_indices[1]+1,
+                      min_indices[2]:max_indices[2]+1]
+    else:
+        raise ValueError("不支持的数据维度: {}".format(img.ndim))
+
+    return cropped
 
 
 def process(mode='train'):
@@ -31,9 +69,9 @@ def process(mode='train'):
     subdirs = os.listdir(input_dir)
     subdirs = sorted(subdirs)
     subdirs = [d for d in subdirs if os.path.isdir(os.path.join(input_dir, d))]
-    # 分离测试集和训练集,90%训练集，10%测试集,按照文件夹名字排序，每9个训练一个测试
-    test_subdirs = subdirs[::10]
-    train_subdirs = [d for i, d in enumerate(subdirs) if i % 10 != 0]
+    # 训练集测试集1:2划分
+    test_subdirs = subdirs[::3]
+    train_subdirs = [d for i, d in enumerate(subdirs) if i % 3 != 0]
     if mode == 'train':
         subdirs = train_subdirs
     else:
@@ -56,16 +94,26 @@ def process(mode='train'):
                     seg_slice[seg_slice == 1] = 1
                     # 没有3出现
                     seg_slice[seg_slice == 3] = 1
-                    # 增强去
-                    seg_slice[seg_slice == 4] = 1
+                    # 增强区
+                    seg_slice[seg_slice == 4] = 0
                     # 水肿
                     seg_slice[seg_slice == 2] = 0
-                    if (seg_slice.max() == 0):
+                    if np.sum(seg_slice == 1) < 4:
                         continue
-                    seg_slice = (seg_slice - np.min(seg_slice)) / \
-                        (np.max(seg_slice) - np.min(seg_slice))
+                    if seg_slice.max() == 0:
+                        continue
                     seg_slice = (seg_slice * 255).astype(np.uint8)
                     image_slice = image_data[:, :, i]
+                    nonzero_indices = np.nonzero(image_slice)
+
+                    # 对于每个维度，找到最小和最大的索引
+                    min_indices = [np.min(idx) for idx in nonzero_indices]
+                    max_indices = [np.max(idx) for idx in nonzero_indices]
+
+                    image_slice = image_slice[min_indices[0]:max_indices[0] +
+                      1, min_indices[1]:max_indices[1]+1]
+                    seg_slice = seg_slice[min_indices[0]:max_indices[0] +
+                      1, min_indices[1]:max_indices[1]+1]
                     # # 获取image_slice除去0意外的最小值
                     # min_value = np.min(image_slice[image_slice > 0])
                     # max_value = np.max(image_slice)
