@@ -5,6 +5,7 @@ from PIL import Image
 from skimage.measure import label, regionprops
 from tqdm import tqdm
 from data.expand_dataset import extract_image_id
+from scipy.spatial.distance import directed_hausdorff, cdist
 
 
 def extract_mask_id(mask_file):
@@ -29,6 +30,31 @@ def calculate_iou(mask, ground_truth):
     return iou
 
 
+def dice(mask1, mask2):
+    intersection = np.logical_and(mask1, mask2).sum()
+    return (2 * intersection) / (mask1.sum() + mask2.sum() + 1e-7)
+
+
+def hausdorff_distance(mask1, mask2):
+    points1 = np.column_stack(np.where(mask1 > 0))
+    points2 = np.column_stack(np.where(mask2 > 0))
+
+    d1 = directed_hausdorff(points1, points2)[0]
+    d2 = directed_hausdorff(points2, points1)[0]
+
+    return max(d1, d2)
+
+
+def average_surface_distance(mask1, mask2):
+    points1 = np.column_stack(np.where(mask1 > 0))
+    points2 = np.column_stack(np.where(mask2 > 0))
+
+    d1 = cdist(points1, points2).min(axis=1)
+    d2 = cdist(points2, points1).min(axis=1)
+
+    return (d1.mean() + d2.mean()) / 2
+
+
 def rewards_function(mask, ground_truth):
     """
     计算 mask 和 ground_truth 之间的 IOU，并根据散点数量降低奖励。
@@ -39,27 +65,16 @@ def rewards_function(mask, ground_truth):
     """
     mask = mask.astype(bool)
     ground_truth = ground_truth.astype(bool)
-
+    reward = average_surface_distance(mask, ground_truth)
     # 计算 IOU
-    iou = calculate_iou(mask, ground_truth)
+    # iou = calculate_iou(mask, ground_truth)
 
     # 识别散点并降低奖励
-    labeled_mask, num_features = label(mask, return_num=True)
-    scatter_penalty = (num_features - 1) * 0.02  # 每个散点降低的奖励值，假设为0.02
-    adjusted_iou = iou - scatter_penalty
+    # labeled_mask, num_features = label(mask, return_num=True)
+    # scatter_penalty = (num_features - 1) * 0.02  # 每个散点降低的奖励值，假设为0.02
+    # adjusted_iou = iou - scatter_penalty
 
-    # 将品质按照不同区间划分成 12 档，将奖励映射到 0-11 之间
-    reward = max(adjusted_iou, 0)  # 确保奖励值不为负
-    # reward = iou
-
-    # if reward >= 0.8:
-    #     reward = 8 + int((reward - 0.8) / 0.05)
-    # elif reward >= 0.5:
-    #     reward = 4 + int((reward - 0.5) / 0.075)
-    # else:
-    #     reward = int(reward / 0.125)
-
-    # reward = min(reward, 11)  # 确保奖励值不超过 11
+    # reward = max(adjusted_iou, 0)
 
     return reward
 
@@ -103,13 +118,15 @@ def normalize_test_rewards(rewards, train_mean, train_std, output_dir, normalize
 
         # 避免除零错误
         if max_reward == min_reward:
-            normalized_rewards = [0.5] * len(reward_values)  # 如果所有奖励相同，全部设为 0.5
+            normalized_rewards = [0.5] * \
+                len(reward_values)  # 如果所有奖励相同，全部设为 0.5
         else:
             normalized_rewards = [
                 (r - min_reward) / (max_reward - min_reward) for r in reward_values]
     elif normalize == 'zscore':
         # 使用训练集的均值和标准差对测试集的奖励进行归一化
-        normalized_rewards = [(r - train_mean) / train_std for r in reward_values]
+        normalized_rewards = [
+            (r - train_mean) / train_std for r in reward_values]
 
     for (reward, image_id, mask_id), norm_reward in zip(rewards, normalized_rewards):
         norm_reward_path = os.path.join(

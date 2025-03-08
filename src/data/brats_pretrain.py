@@ -10,14 +10,15 @@ from matplotlib import pyplot as plt
 
 
 def normalize_image(slice_data, method='minmax'):
-    MIN_BOUND = 0
-    MAX_BOUND = 700
-    slice_data[slice_data > MAX_BOUND] = MAX_BOUND
-    slice_data[slice_data < MIN_BOUND] = MIN_BOUND
+
     if method == 'minmax':
         # 将数据标准化到[0, 1]之间
         # slice_data = (slice_data - np.min(slice_data)) / \
         #     (np.max(slice_data) - np.min(slice_data))
+        MIN_BOUND = 0
+        MAX_BOUND = 700
+        slice_data[slice_data > MAX_BOUND] = MAX_BOUND
+        slice_data[slice_data < MIN_BOUND] = MIN_BOUND
         slice_data = (slice_data - MIN_BOUND) / (MAX_BOUND - MIN_BOUND)
     elif method == 'zscore':
         # 使用均值和标准差进行标准化
@@ -88,6 +89,7 @@ def process(mode='train'):
                 # step设置为4
 
                 for i in range(0, seg_data.shape[2], 4):
+                    
                     seg_slice = seg_data[:, :, i]
                     seg_slice = seg_slice.astype(np.uint8)
                     # 核心区
@@ -95,7 +97,7 @@ def process(mode='train'):
                     # 没有3出现
                     seg_slice[seg_slice == 3] = 1
                     # 增强区
-                    seg_slice[seg_slice == 4] = 0
+                    seg_slice[seg_slice == 4] = 1
                     # 水肿
                     seg_slice[seg_slice == 2] = 0
                     if np.sum(seg_slice == 1) < 4:
@@ -104,16 +106,17 @@ def process(mode='train'):
                         continue
                     seg_slice = (seg_slice * 255).astype(np.uint8)
                     image_slice = image_data[:, :, i]
-                    nonzero_indices = np.nonzero(image_slice)
+                    image_shape = image_slice.shape
 
+                    nonzero_indices = np.nonzero(image_slice)
                     # 对于每个维度，找到最小和最大的索引
                     min_indices = [np.min(idx) for idx in nonzero_indices]
                     max_indices = [np.max(idx) for idx in nonzero_indices]
 
                     image_slice = image_slice[min_indices[0]:max_indices[0] +
-                      1, min_indices[1]:max_indices[1]+1]
+                                              1, min_indices[1]:max_indices[1]+1]
                     seg_slice = seg_slice[min_indices[0]:max_indices[0] +
-                      1, min_indices[1]:max_indices[1]+1]
+                                          1, min_indices[1]:max_indices[1]+1]
                     # # 获取image_slice除去0意外的最小值
                     # min_value = np.min(image_slice[image_slice > 0])
                     # max_value = np.max(image_slice)
@@ -123,8 +126,8 @@ def process(mode='train'):
                     # 使用minmax标准化，并映射到0-255之间
                     image_slice = normalize_image(image_slice, 'minmax')
                     image_slice = (image_slice * 255).astype(np.uint8)
-                    seg_img = Image.fromarray(seg_slice, mode='L')
-                    image_img = Image.fromarray(image_slice, mode='L')
+                    seg_img = Image.fromarray(seg_slice, mode='L').resize(image_shape, Image.NEAREST)
+                    image_img = Image.fromarray(image_slice, mode='L').resize(image_shape, Image.BICUBIC)
                     output_filename = f"{image_id}_{i}.png"
                     seg_output_path = os.path.join(
                         output_gt_dir, output_filename)

@@ -51,10 +51,10 @@ def generate_data(train=False, use_best_point=False):
     copy_best_rewards(in_dir=ground_truth_dir, out_dir=expanded_dir,
                       ground_truth_dir=ground_truth_dir, index=0, is_ground_truth=True)
     for i_dir in random_point_masks_dir:
-        copy_best_rewards(in_dir=os.path.join(i_dir[1], 'largest_connected'), out_dir=expanded_dir,
+        copy_best_rewards(in_dir=os.path.join(i_dir[1], 'best_rewards'), out_dir=expanded_dir,
                           ground_truth_dir=ground_truth_dir, index=i_dir[0])
     # image_size = (512, 512)
-    image_size = (240, 240)
+    image_size = None
     if train:
         # 调整图像大小并生成奖励
         resize_and_compare_images(

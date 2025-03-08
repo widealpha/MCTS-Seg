@@ -1,6 +1,7 @@
 # 生成SAM对图像的原始分割文件
 import json
 import os
+import traceback
 
 import numpy as np
 from utils.helpers import load_sam, get_data_path, setup_seed
@@ -13,19 +14,27 @@ setup_seed()
 sam = load_sam()
 
 
+def dice(mask1, mask2):
+    intersection = np.logical_and(mask1, mask2).sum()
+    return (2 * intersection) / (mask1.sum() + mask2.sum() + 1e-7)
+
+
+def iou(mask1, mask2):
+    intersection = np.logical_and(mask1, mask2).sum()
+    union = np.logical_or(mask1, mask2).sum()
+    return intersection / union if union != 0 else 0
+
+
 def rewards_function(mask, ground_truth):
     """
-    计算 mask 和 ground_truth 之间的 Dice 系数。
+    计算 mask 和 ground_truth 之间的 IoU（Intersection over Union）。
     :param mask: 预测的 mask
     :param ground_truth: ground truth mask
-    :return: Dice 系数
+    :return: IoU 值
     """
     mask = mask.astype(bool)
     ground_truth = ground_truth.astype(bool)
-    intersection = np.logical_and(mask, ground_truth)
-    dice_score = (2 * np.sum(intersection)) / \
-        (np.sum(mask) + np.sum(ground_truth) + 1e-7)
-    return dice_score
+    return dice(mask, ground_truth)
 
 
 def sam_auto_mask(in_dir, out_dir, ground_truth_dir):
@@ -44,6 +53,7 @@ def sam_auto_mask(in_dir, out_dir, ground_truth_dir):
             image_folder) if f.lower().endswith(('.png', '.jpg', '.jpeg'))]
         image_files.sort()
         image_files = filter_images(image_files)
+        image_files.sort()
         # 使用 tqdm 遍历所有图片文件
         for image_file in tqdm(image_files, desc="Processing images"):
             image_path = os.path.join(image_folder, image_file)
@@ -123,7 +133,7 @@ def sam_auto_mask(in_dir, out_dir, ground_truth_dir):
             json.dump(metadata, json_file, indent=4)
     else:
         print(f"The folder '{image_folder}' does not exist.")
-        
+
 
 def sam_random_point_mask(point_number, in_dir, ground_truth_dir, out_dir):
     '''
@@ -174,13 +184,15 @@ def sam_random_point_mask(point_number, in_dir, ground_truth_dir, out_dir):
                 y_indices_1, x_indices_1 = np.where(gt_array > 0)
 
                 if len(y_indices_0) > 0:
-                    indices_0 = np.random.choice(len(y_indices_0), min(point_number // 2, len(y_indices_0)), replace=False)
+                    indices_0 = np.random.choice(len(y_indices_0), min(
+                        point_number // 2, len(y_indices_0)), replace=False)
                     for idx in indices_0:
                         points.append([x_indices_0[idx], y_indices_0[idx]])
                         labels.append(0)
 
                 if len(y_indices_1) > 0:
-                    indices_1 = np.random.choice(len(y_indices_1), min(point_number - (point_number // 2), len(y_indices_1)), replace=False)
+                    indices_1 = np.random.choice(len(y_indices_1), min(
+                        point_number - (point_number // 2), len(y_indices_1)), replace=False)
                     for idx in indices_1:
                         points.append([x_indices_1[idx], y_indices_1[idx]])
                         labels.append(1)
@@ -207,8 +219,7 @@ def sam_random_point_mask(point_number, in_dir, ground_truth_dir, out_dir):
                         best_reward = reward
                         best_reward_index = i
                 # 保存best_mask到指定的文件，文件名规则为原来的文件名_mask_index.png
-                mask_image = Image.fromarray(
-                    best_mask.astype('uint8') * 255)
+                mask_image = Image.fromarray(best_mask.astype('uint8') * 255)
                 mask_filename = f"{image_id}_mask_{best_reward_index}.png"
                 mask_image.save(os.path.join(
                     output_folder, mask_filename))
@@ -216,7 +227,9 @@ def sam_random_point_mask(point_number, in_dir, ground_truth_dir, out_dir):
                 with open(os.path.join(output_folder, f"{image_id}_best_score.txt"), 'w') as f:
                     f.write(f"{best_reward}\n")
         except Exception as e:
-            print(f"Error processing image {image_file}: {e}")
+            print(f"\nError processing image {image_file}: {e}\n")
+            print(points)
+            traceback.print_exc()
 
 
 def sam_point_mask(point_number, grid_size, in_dir, ground_truth_dir, out_dir):
@@ -244,7 +257,7 @@ def sam_point_mask(point_number, grid_size, in_dir, ground_truth_dir, out_dir):
     for image_file in tqdm(image_files, desc="Processing images"):
         image_path = os.path.join(image_folder, image_file)
         image_id = extract_image_id(image_file)
-        
+
         ground_truth_files = [f for f in os.listdir(
             ground_truth_folder) if f.startswith(image_id)]
         if len(ground_truth_files) == 0:
