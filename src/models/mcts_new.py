@@ -29,7 +29,7 @@ class Utils:
         # 每次网格划分为K*K块
         self.grid_size = 4
         # 每次模拟的次数
-        self.num_simulations = 50
+        self.num_simulations = 2000
         # 允许使用背景点
         self.enable_background = False
 
@@ -79,7 +79,7 @@ def load_model(model_name, sample_width, sample_height):
     return model
 
 
-def sam_seg_cal_reward(predictor, points, labels, ground_truth, image_id):
+def sam_seg_cal_reward(predictor, points, labels, image, ground_truth, image_id):
     """
     使用 SAM 进行分割，结合 ground truth 计算 reward，reward 直接使用 IOU，结果保存在 results/mcts 文件夹下。
     :param predictor: SAM 预测器
@@ -99,15 +99,18 @@ def sam_seg_cal_reward(predictor, points, labels, ground_truth, image_id):
     # 保存结果
     results_dir = get_mcts_path()
     os.makedirs(results_dir, exist_ok=True)
+    image_path = os.path.join(results_dir, f'{image_id}_raw.png')
     result_path = os.path.join(results_dir, f'{image_id}_result.png')
     mask_path = os.path.join(results_dir, f'{image_id}_mask.png')
     iou_path = os.path.join(results_dir, f'{image_id}_iou.txt')
 
     # 保存分割结果和 mask
+    raw_image = (image * 255).astype(np.uint8).transpose(1, 2, 0)
     new_mask_image = (new_mask * 255).astype(np.uint8)
     ground_truth_image = (ground_truth * 255).astype(np.uint8)
     combined_image = np.concatenate(
         (new_mask_image, ground_truth_image), axis=1)
+    Image.fromarray(raw_image).save(image_path)
     Image.fromarray(combined_image).save(result_path)
     Image.fromarray(new_mask_image).save(mask_path)
     # 将 points 绘制在 mask 上并保存
@@ -318,7 +321,7 @@ class GameState:
         if self.current_action:
             moves.extend([move for move, coord in actions["siblings"]])
         return moves
-    
+
     def get_possible_children_moves(self) -> List[List[int]]:
         """
         返回当前状态下所有合法的下一步动作（新的选择路径）。
@@ -434,8 +437,10 @@ class MCTS:
     MCTS 算法封装类，通过多次迭代来搜索最优决策。
     """
 
-    def __init__(self, root_state: GameState) -> None:
-        self.root: Node = Node(state=root_state)
+    def __init__(self, root: Node) -> None:
+        self.root = root
+        # else:
+        #     self.root: Node = Node(state=root_state)
 
     def select(self, node: Node) -> Node:
         """
@@ -507,7 +512,9 @@ if __name__ == '__main__':
         max_points = utils.max_points
         best_node = root
         for _ in range(max_points):
-            mcts = MCTS(best_node.state)
+            # history_action = best_node.state.action_history.copy()
+            # history_action.append(best_node.state.current_action)
+            mcts = MCTS(best_node)
             best_node = mcts.search(iterations=utils.num_simulations)
         points = np.array(best_node.state.all_action_points())
         labels = np.array(best_node.state.all_action_labels())
@@ -515,7 +522,7 @@ if __name__ == '__main__':
         reward = best_node.state.get_reward()
 
         sam_seg_cal_reward(predictor=predictor, points=points,
-                           labels=labels, ground_truth=mask[0].cpu().numpy(), image_id=image_id)
+                           labels=labels, image=image.cpu().numpy(), ground_truth=mask[0].cpu().numpy(), image_id=image_id)
         # 将最佳点和奖励写入文件
 
         result_file_path = os.path.join(

@@ -41,11 +41,11 @@ def generate_data(train=False, use_best_point=False):
     # 生成 SAM 自动掩码
     # sam_auto_mask(in_dir=raw_image_dir, out_dir=auto_masks_dir,
     #               ground_truth_dir=ground_truth_dir)
-    for i_dir in random_point_masks_dir:
-        sam_random_point_mask(point_number=i_dir[0], in_dir=raw_image_dir, out_dir=i_dir[1],
-                              ground_truth_dir=ground_truth_dir)
-        extract_largest_connected_component(
-            in_dir=os.path.join(i_dir[1], 'best_rewards'), out_dir=os.path.join(i_dir[1], 'largest_connected'))
+    # for i_dir in random_point_masks_dir:
+    #     sam_random_point_mask(point_number=i_dir[0], in_dir=raw_image_dir, out_dir=i_dir[1],
+    #                           ground_truth_dir=ground_truth_dir)
+    #     extract_largest_connected_component(
+    #         in_dir=os.path.join(i_dir[1], 'best_rewards'), out_dir=os.path.join(i_dir[1], 'largest_connected'))
 
     # 复制最佳奖励文件
     copy_best_rewards(in_dir=ground_truth_dir, out_dir=expanded_dir,
@@ -53,8 +53,8 @@ def generate_data(train=False, use_best_point=False):
     for i_dir in random_point_masks_dir:
         copy_best_rewards(in_dir=os.path.join(i_dir[1], 'best_rewards'), out_dir=expanded_dir,
                           ground_truth_dir=ground_truth_dir, index=i_dir[0])
-    # image_size = (512, 512)
-    image_size = None
+    image_size = (512, 512)
+    # image_size = None
     if train:
         # 调整图像大小并生成奖励
         resize_and_compare_images(

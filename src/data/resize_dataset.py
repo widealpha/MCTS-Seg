@@ -2,7 +2,9 @@ import os
 import re
 import numpy as np
 from PIL import Image
+import scipy
 from skimage.measure import label, regionprops
+import torch
 from tqdm import tqdm
 from data.expand_dataset import extract_image_id
 from scipy.spatial.distance import directed_hausdorff, cdist
@@ -45,14 +47,41 @@ def hausdorff_distance(mask1, mask2):
     return max(d1, d2)
 
 
-def average_surface_distance(mask1, mask2):
-    points1 = np.column_stack(np.where(mask1 > 0))
-    points2 = np.column_stack(np.where(mask2 > 0))
+def compute_surface_voxels(binary_mask):
+    """计算二值掩码的表面体素"""
+    eroded = scipy.ndimage.binary_erosion(binary_mask)
+    surface = binary_mask ^ eroded
+    return surface
 
-    d1 = cdist(points1, points2).min(axis=1)
-    d2 = cdist(points2, points1).min(axis=1)
+def average_surface_distance(mask: np.ndarray, ground_truth: np.ndarray):
+    """使用 GPU 计算平均表面距离"""
+    
+    # 获取表面点
+    mask_surface = compute_surface_voxels(mask)
+    gt_surface = compute_surface_voxels(ground_truth)
 
-    return (d1.mean() + d2.mean()) / 2
+    # 获取表面点索引
+    mask_pts = np.array(np.nonzero(mask_surface)).T
+    gt_pts = np.array(np.nonzero(gt_surface)).T
+
+    if len(mask_pts) == 0 or len(gt_pts) == 0:
+        return float('inf')  # 避免空掩码情况
+
+    # 转换为 GPU Tensor
+    mask_pts_tensor = torch.tensor(mask_pts, dtype=torch.float32, device='cuda')
+    gt_pts_tensor = torch.tensor(gt_pts, dtype=torch.float32, device='cuda')
+
+    # 计算两组点之间的欧几里得距离矩阵
+    dists_mask_to_gt = torch.cdist(mask_pts_tensor, gt_pts_tensor)
+    dists_gt_to_mask = torch.cdist(gt_pts_tensor, mask_pts_tensor)
+
+    # 计算最小距离并求均值
+    asd_mask_to_gt = torch.min(dists_mask_to_gt, dim=1)[0].mean()
+    asd_gt_to_mask = torch.min(dists_gt_to_mask, dim=1)[0].mean()
+
+    asd = (asd_mask_to_gt + asd_gt_to_mask) / 2
+
+    return asd.item()
 
 
 def rewards_function(mask, ground_truth):
@@ -65,7 +94,7 @@ def rewards_function(mask, ground_truth):
     """
     mask = mask.astype(bool)
     ground_truth = ground_truth.astype(bool)
-    reward = average_surface_distance(mask, ground_truth)
+    reward = dice(mask, ground_truth)
     # 计算 IOU
     # iou = calculate_iou(mask, ground_truth)
 
@@ -185,7 +214,7 @@ def resize_and_compare_images(in_dir, out_dir, raw_dir, size=(1024, 1024), train
         # Resize images
         if size is not None:
             image = image.resize(size)
-            ground_truth = ground_truth.resize(size)
+            ground_truth = ground_truth.resize(size,Image.NEAREST)
             raw_image = raw_image.resize(size, Image.LANCZOS)
 
         mask = np.array(image)
