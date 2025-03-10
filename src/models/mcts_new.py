@@ -29,7 +29,7 @@ class Utils:
         # 每次网格划分为K*K块
         self.grid_size = 4
         # 每次模拟的次数
-        self.num_simulations = 2000
+        self.num_simulations = 50
         # 允许使用背景点
         self.enable_background = False
 
@@ -407,7 +407,7 @@ class Node:
         """
         从未尝试的动作中选择一个扩展子节点
         """
-        move = self.untried_moves.pop()
+        move = self.untried_moves.pop(np.random.randint(len(self.untried_moves)))
         next_state = self.state.apply_move(move)
         child_node = Node(state=next_state, parent=self)
         self.children.append(child_node)

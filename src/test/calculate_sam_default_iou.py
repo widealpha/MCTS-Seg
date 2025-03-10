@@ -58,7 +58,6 @@ def main():
 
     one_fg = os.path.join(
         data_path, f'processed/{mode}/random_point_masks_1/largest_connected')
-
     one_bg_one_fg = os.path.join(
         data_path, f'processed/{mode}/random_point_masks_2/largest_connected')
     one_bg_two_fg = os.path.join(
