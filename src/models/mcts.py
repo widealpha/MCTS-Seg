@@ -271,7 +271,7 @@ class MCTS:
         # new_state = node.state.take_action(action)
         # return node.add_child(action, new_state)
         legal_actions = node.untried_actions
-        
+
         max_reward = -np.inf
         for action in legal_actions:
             new_state = node.state.take_action(action)
@@ -295,7 +295,7 @@ class MCTS:
         current_state = node.state
         actions = current_state.get_legal_actions()
         if len(actions) > 0:
-            action =  random.choice(actions)
+            action = random.choice(actions)
             current_state = current_state.take_action(action)
         # while len(current_state.cur_action.action) < self.global_info.max_depth:
         #     legal_actions = current_state.get_legal_actions()
@@ -448,7 +448,8 @@ if __name__ == '__main__':
     sample_width, sample_height = sample_shape[1], sample_shape[2]
     # 初始化 SAM和RewardModel
     predictor = SamPredictor(sam)
-    reward_model = load_model(model_name='latest.pth', sample_width=sample_width, sample_height=sample_height)
+    reward_model = load_model(
+        model_name='latest.pth', sample_width=sample_width, sample_height=sample_height)
     global_info = GlobalInfo(predictor=predictor, reward_model=reward_model)
     results_dir = get_mcts_path()
     os.makedirs(results_dir, exist_ok=True)
@@ -458,7 +459,7 @@ if __name__ == '__main__':
         image = data['image'][0].to(device)
         mask = data['mask'][0].to(device)
         image_id = data['image_id'][0]
-        
+
         global_info.set_image(image)
         initial_state = State(global_info=global_info)
         root = Node(initial_state)
@@ -473,7 +474,7 @@ if __name__ == '__main__':
         labels = np.array(best_node.state.all_action_labels())
 
         reward = best_node.state.get_reward()
-        
+
         sam_seg_cal_reward(predictor=predictor, points=points,
                            labels=labels, ground_truth=mask[0].cpu().numpy(), image_id=image_id)
         # 将最佳点和奖励写入文件
@@ -485,15 +486,21 @@ if __name__ == '__main__':
             f.write(f"Best labels: {labels.tolist()}\n")
             f.write(f"Reward: {reward}\n")
     with open(os.path.join(results_dir, 'info.log'), 'a') as f:
-        # 计算所有f'{image_id}_iou.txt'的均值并追加进去
         iou_results = []
+        dice_results = []  # 新增列表保存每个Dice值
         for file in os.listdir(results_dir):
             if file.endswith('_iou.txt'):
                 with open(os.path.join(results_dir, file), 'r') as iou_f:
                     iou = float(iou_f.read())
                     iou_results.append(iou)
+                    # 计算当前iou对应的Dice（注意公式分母要加括号）
+                    dice = (2 * iou) / (iou + 1)         # 正确公式
+                    dice_results.append(dice)
         mean_iou = np.mean(iou_results)
+        mean_dice = np.mean(dice_results)                # 计算Dice均值
         f.write(f"Mean IoU: {mean_iou}\n")
+        f.write(f"Mean Dice: {mean_dice}\n")             # 追加Dice结果
+
     with open(os.path.join(results_dir, 'info.log'), 'a') as f:
         # 计算所有f'{image_id}_reward.txt'的均值并追加进去
         reward_results = []
