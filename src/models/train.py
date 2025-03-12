@@ -4,7 +4,7 @@ from tqdm import tqdm
 from datetime import datetime
 from models.model import RewardPredictionModel
 from data.loader import get_data_loader
-from utils.helpers import get_log_writer, device, setup_seed, get_checkpoints_path
+from utils.helpers import get_log_writer, device, setup_seed, get_checkpoints_path, dataset
 from torch import nn, optim
 import os
 
@@ -14,6 +14,7 @@ setup_seed()
 
 
 def train(old_check_point=None):
+    print(f"Start Traning Dataset:{dataset} ...")
     log_writer = get_log_writer()
     train_dataloader, test_dataloader = get_data_loader()
     first_sample = train_dataloader.dataset[0]
@@ -27,8 +28,9 @@ def train(old_check_point=None):
     if old_check_point:
         model.load_state_dict(torch.load(old_check_point))
         print(f"Loaded model from {old_check_point}")
-    criterion = nn.MSELoss() 
-    optimizer = optim.Adam(model.parameters(), lr=lr, weight_decay=weight_decay)
+    criterion = nn.MSELoss()
+    optimizer = optim.Adam(model.parameters(), lr=lr,
+                           weight_decay=weight_decay)
     # 训练循环
     epochs = 60
     scaler = torch.amp.GradScaler(device)

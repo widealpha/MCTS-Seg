@@ -11,17 +11,47 @@ data_path = get_data_path()
 
 
 class ImageDataset(Dataset):
-    def __init__(self, image_dir, per_image_mask=3):
-        """
-        :param image_dir: 原图像所在目录
-        """
+    def __init__(self, image_dir, per_image_mask=None):
         self.image_dir = image_dir
         file_list = os.listdir(image_dir)
-        self.image_ids = [file.split('_raw')[0] for file in file_list if re.match(
-            r'.+_raw\.jpg$', file)]
-        self.image_ids.sort()
-        self.per_image_mask = per_image_mask
+        # 提取所有唯一的原始图像ID（排序后）
+        self.image_ids = sorted(list(set(
+            [re.match(r'(.+)_raw\.jpg$', f).group(1)
+             for f in file_list if re.match(r'.+_raw\.jpg$', f)]
+        )))
+
+        if per_image_mask:
+            self.per_image_mask = per_image_mask
+        else:
+            # 自动计算统一mask数量
+            self.per_image_mask = self._validate_and_get_mask_count()
+        print(f'{image_dir} {self.per_image_mask} masks per image')
+
         self.transform = transforms.ToTensor()
+
+    def _validate_and_get_mask_count(self):
+        """验证所有image的mask数量一致性并返回统一值"""
+        mask_counts = set()
+        file_set = set(os.listdir(self.image_dir))
+
+        for image_id in self.image_ids:
+            # 统计有效mask数量（需同时存在mask和reward文件）
+            valid_masks = 0
+            mask_pattern = re.compile(rf'^{image_id}_mask_(\d+)\.png$')
+            for f in file_set:
+                # 检查mask文件
+                if mask_match := mask_pattern.match(f):
+                    mask_num = mask_match.group(1)
+                    reward_file = f"{image_id}_mask_{mask_num}_normalized_reward.txt"
+                    if reward_file in file_set:
+                        valid_masks += 1
+
+            mask_counts.add(valid_masks)
+
+        if len(mask_counts) != 1:
+            raise ValueError(f"不一致的mask数量，检测到: {mask_counts}")
+
+        return mask_counts.pop()
 
     def __len__(self):
         return len(self.image_ids) * self.per_image_mask
@@ -42,6 +72,8 @@ class ImageDataset(Dataset):
         except Exception as e:
             print(f"Error loading data for {image_id}: {e}")
             return None
+        # if image.shape[1] != 512 or image.shape[2] != 512:
+        #     print(f"Image shape is not 512x512 for {image_id}")
 
         return {
             'image': image,

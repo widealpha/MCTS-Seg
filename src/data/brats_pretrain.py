@@ -5,6 +5,10 @@ from PIL import Image
 from scipy.ndimage import gaussian_filter
 from tqdm import tqdm
 from matplotlib import pyplot as plt
+import warnings
+
+# 将 RuntimeWarning 转为异常
+warnings.simplefilter("error", RuntimeWarning)
 
 # 选择标准化方法：
 
@@ -16,7 +20,7 @@ def normalize_image(slice_data, method='minmax'):
         # slice_data = (slice_data - np.min(slice_data)) / \
         #     (np.max(slice_data) - np.min(slice_data))
         MIN_BOUND = 0
-        MAX_BOUND = 700
+        MAX_BOUND = np.max(slice_data)
         slice_data[slice_data > MAX_BOUND] = MAX_BOUND
         slice_data[slice_data < MIN_BOUND] = MIN_BOUND
         slice_data = (slice_data - MIN_BOUND) / (MAX_BOUND - MIN_BOUND)
@@ -79,62 +83,67 @@ def process(mode='train'):
         subdirs = test_subdirs
     subdirs = sorted(subdirs)
     for subdir in tqdm(subdirs, desc='Processing subdirectories'):
-        for file in os.listdir(os.path.join(input_dir, subdir)):
-            if '_seg.nii' in file.lower():
-                seg_file_path = os.path.join(input_dir, subdir, file)
-                image_file_path = seg_file_path.replace('_seg', '_t1ce')
-                seg_data = nib.load(seg_file_path).get_fdata()
-                image_data = nib.load(image_file_path).get_fdata()
-                image_id = os.path.splitext(file)[0].replace('_seg', '')
-                # step设置为4
+        try:
+            for file in os.listdir(os.path.join(input_dir, subdir)):
+                if '_seg.nii' in file.lower():
+                    seg_file_path = os.path.join(input_dir, subdir, file)
+                    image_file_path = seg_file_path.replace('_seg', '_t1ce')
+                    seg_data = nib.load(seg_file_path).get_fdata()
+                    image_data = nib.load(image_file_path).get_fdata()
+                    image_id = os.path.splitext(file)[0].replace('_seg', '')
+                    # step设置为4
 
-                for i in range(0, seg_data.shape[2], 4):
-                    
-                    seg_slice = seg_data[:, :, i]
-                    seg_slice = seg_slice.astype(np.uint8)
-                    # 核心区
-                    seg_slice[seg_slice == 1] = 1
-                    # 没有3出现
-                    seg_slice[seg_slice == 3] = 1
-                    # 增强区
-                    seg_slice[seg_slice == 4] = 1
-                    # 水肿
-                    seg_slice[seg_slice == 2] = 0
-                    if np.sum(seg_slice == 1) < 4:
-                        continue
-                    if seg_slice.max() == 0:
-                        continue
-                    seg_slice = (seg_slice * 255).astype(np.uint8)
-                    image_slice = image_data[:, :, i]
-                    image_shape = image_slice.shape
+                    for i in range(0, seg_data.shape[2], 4):
 
-                    nonzero_indices = np.nonzero(image_slice)
-                    # 对于每个维度，找到最小和最大的索引
-                    min_indices = [np.min(idx) for idx in nonzero_indices]
-                    max_indices = [np.max(idx) for idx in nonzero_indices]
+                        seg_slice = seg_data[:, :, i]
+                        seg_slice = seg_slice.astype(np.uint8)
+                        # 核心区
+                        seg_slice[seg_slice == 1] = 1
+                        # 没有3出现
+                        seg_slice[seg_slice == 3] = 1
+                        # 增强区
+                        seg_slice[seg_slice == 4] = 1
+                        # 水肿
+                        seg_slice[seg_slice == 2] = 0
+                        if np.sum(seg_slice == 1) < 4:
+                            continue
+                        if seg_slice.max() == 0:
+                            continue
+                        seg_slice = (seg_slice * 255).astype(np.uint8)
+                        image_slice = image_data[:, :, i]
+                        image_shape = image_slice.shape
 
-                    image_slice = image_slice[min_indices[0]:max_indices[0] +
+                        nonzero_indices = np.nonzero(image_slice)
+                        # 对于每个维度，找到最小和最大的索引
+                        min_indices = [np.min(idx) for idx in nonzero_indices]
+                        max_indices = [np.max(idx) for idx in nonzero_indices]
+
+                        image_slice = image_slice[min_indices[0]:max_indices[0] +
+                                                  1, min_indices[1]:max_indices[1]+1]
+                        seg_slice = seg_slice[min_indices[0]:max_indices[0] +
                                               1, min_indices[1]:max_indices[1]+1]
-                    seg_slice = seg_slice[min_indices[0]:max_indices[0] +
-                                          1, min_indices[1]:max_indices[1]+1]
-                    # # 获取image_slice除去0意外的最小值
-                    # min_value = np.min(image_slice[image_slice > 0])
-                    # max_value = np.max(image_slice)
-                    # # 仅仅改变非0的值映射到1-255之间
-                    # image_slice[image_slice > 0] = (image_slice[image_slice > 0] - 1) / \
-                    #     (max_value - min_value) * 254 + 1
-                    # 使用minmax标准化，并映射到0-255之间
-                    image_slice = normalize_image(image_slice, 'minmax')
-                    image_slice = (image_slice * 255).astype(np.uint8)
-                    seg_img = Image.fromarray(seg_slice, mode='L').resize(image_shape, Image.NEAREST)
-                    image_img = Image.fromarray(image_slice, mode='L').resize(image_shape, Image.BICUBIC)
-                    output_filename = f"{image_id}_{i}.png"
-                    seg_output_path = os.path.join(
-                        output_gt_dir, output_filename)
-                    image_output_path = os.path.join(
-                        output_image_dir, output_filename)
-                    seg_img.save(seg_output_path)
-                    image_img.save(image_output_path)
+                        # # 获取image_slice除去0意外的最小值
+                        # min_value = np.min(image_slice[image_slice > 0])
+                        # max_value = np.max(image_slice)
+                        # # 仅仅改变非0的值映射到1-255之间
+                        # image_slice[image_slice > 0] = (image_slice[image_slice > 0] - 1) / \
+                        #     (max_value - min_value) * 254 + 1
+                        # 使用minmax标准化，并映射到0-255之间
+                        image_slice = normalize_image(image_slice, 'minmax')
+                        image_slice = (image_slice * 255).astype(np.uint8)
+                        seg_img = Image.fromarray(seg_slice, mode='L').resize(
+                            image_shape, Image.NEAREST)
+                        image_img = Image.fromarray(image_slice, mode='L').resize(
+                            image_shape, Image.BICUBIC)
+                        output_filename = f"{image_id}_{i}.png"
+                        seg_output_path = os.path.join(
+                            output_gt_dir, output_filename)
+                        image_output_path = os.path.join(
+                            output_image_dir, output_filename)
+                        seg_img.save(seg_output_path)
+                        image_img.save(image_output_path)
+        except Exception:
+            print(f"exception at {subdir}")
 
 
 if __name__ == '__main__':

@@ -1,4 +1,5 @@
 import os
+from data.extract_background import extract_bg
 from utils.helpers import get_data_path, get_root_path
 from data.sam_seg import sam_auto_mask, sam_point_mask, sam_point_mask_all_points, sam_random_point_mask
 # from data.select_image_best_rewards import select_best_rewards_all_image, select_best_rewards_image
@@ -23,6 +24,7 @@ def generate_data(train=False, use_best_point=False):
     ground_truth_dir = os.path.join(raw_path, data_type, 'ground_truth')
     # 使用sam自动分割后存储mask的目录
     auto_masks_dir = os.path.join(processed_path, data_type, 'auto_masks')
+    bg_masks_dir = os.path.join(processed_path, data_type, 'background_masks')
     # 使用ground_truth中所有点的分割后存储mask的
     all_point_masks_dir = os.path.join(
         processed_path, data_type, 'all_point_masks')
@@ -41,18 +43,21 @@ def generate_data(train=False, use_best_point=False):
     # 生成 SAM 自动掩码
     # sam_auto_mask(in_dir=raw_image_dir, out_dir=auto_masks_dir,
     #               ground_truth_dir=ground_truth_dir)
-    # for i_dir in random_point_masks_dir:
-    #     sam_random_point_mask(point_number=i_dir[0], in_dir=raw_image_dir, out_dir=i_dir[1],
-    #                           ground_truth_dir=ground_truth_dir)
-    #     extract_largest_connected_component(
-    #         in_dir=os.path.join(i_dir[1], 'best_rewards'), out_dir=os.path.join(i_dir[1], 'largest_connected'))
 
+    for i_dir in random_point_masks_dir:
+        sam_random_point_mask(point_number=i_dir[0], in_dir=raw_image_dir, out_dir=i_dir[1],
+                              ground_truth_dir=ground_truth_dir)
+        extract_largest_connected_component(
+            in_dir=os.path.join(i_dir[1], 'best_rewards'), out_dir=os.path.join(i_dir[1], 'largest_connected'))
+    extract_bg(in_dir=raw_image_dir, out_dir=bg_masks_dir)
     # 复制最佳奖励文件
     copy_best_rewards(in_dir=ground_truth_dir, out_dir=expanded_dir,
                       ground_truth_dir=ground_truth_dir, index=0, is_ground_truth=True)
     for i_dir in random_point_masks_dir:
         copy_best_rewards(in_dir=os.path.join(i_dir[1], 'best_rewards'), out_dir=expanded_dir,
                           ground_truth_dir=ground_truth_dir, index=i_dir[0])
+    copy_best_rewards(in_dir=bg_masks_dir, out_dir=expanded_dir,
+                      ground_truth_dir=ground_truth_dir, index=4, is_ground_truth=False)
     # image_size = (512, 512)
     image_size = None
     if train:

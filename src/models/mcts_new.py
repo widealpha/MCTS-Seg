@@ -11,7 +11,7 @@ from PIL import Image, ImageDraw
 from tqdm import tqdm
 from models.model import RewardPredictionModel
 from data.mcts_loader import get_mcts_test_loader
-from utils.helpers import get_checkpoints_path, get_mcts_path, setup_seed, load_sam, device
+from utils.helpers import get_checkpoints_path, get_mcts_path, setup_seed, load_sam, device, dataset
 setup_seed()
 sam = load_sam()
 checkpoints_path = get_checkpoints_path()
@@ -29,7 +29,7 @@ class Utils:
         # 每次网格划分为K*K块
         self.grid_size = 4
         # 每次模拟的次数
-        self.num_simulations = 50
+        self.num_simulations = 500
         # 允许使用背景点
         self.enable_background = False
 
@@ -407,7 +407,8 @@ class Node:
         """
         从未尝试的动作中选择一个扩展子节点
         """
-        move = self.untried_moves.pop(np.random.randint(len(self.untried_moves)))
+        move = self.untried_moves.pop(
+            np.random.randint(len(self.untried_moves)))
         next_state = self.state.apply_move(move)
         child_node = Node(state=next_state, parent=self)
         self.children.append(child_node)
@@ -479,7 +480,7 @@ class MCTS:
         """
         执行指定次数的迭代搜索，返回根节点下访问次数最多的子节点作为最佳选择。
         """
-        for _ in tqdm(range(iterations), desc='MCTS Iteration', position=1, leave=False):
+        for _ in tqdm(range(iterations), desc=f'{image_id} MCTS Iteration', position=1, leave=False):
             leaf = self.select(self.root)
             reward = self.simulation(leaf.state)
             self.backup(leaf, reward)
@@ -487,6 +488,7 @@ class MCTS:
 
 
 if __name__ == '__main__':
+    print(f"Start MCTS Test Dataset:{dataset} ...")
     test_loader = get_mcts_test_loader()
     first_sample = test_loader.dataset[0]
     sample_shape = first_sample['image'].shape
@@ -533,15 +535,20 @@ if __name__ == '__main__':
             f.write(f"Reward: {reward}\n")
 
     with open(os.path.join(results_dir, 'info.log'), 'a') as f:
-        # 计算所有f'{image_id}_iou.txt'的均值并追加进去
         iou_results = []
+        dice_results = []  # 新增列表保存每个Dice值
         for file in os.listdir(results_dir):
             if file.endswith('_iou.txt'):
                 with open(os.path.join(results_dir, file), 'r') as iou_f:
                     iou = float(iou_f.read())
                     iou_results.append(iou)
+                    # 计算当前iou对应的Dice（注意公式分母要加括号）
+                    dice = (2 * iou) / (iou + 1)         # 正确公式
+                    dice_results.append(dice)
         mean_iou = np.mean(iou_results)
+        mean_dice = np.mean(dice_results)                # 计算Dice均值
         f.write(f"Mean IoU: {mean_iou}\n")
+        f.write(f"Mean Dice: {mean_dice}\n")             # 追加Dice结果
     with open(os.path.join(results_dir, 'info.log'), 'a') as f:
         # 计算所有f'{image_id}_reward.txt'的均值并追加进去
         reward_results = []
