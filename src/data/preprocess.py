@@ -49,7 +49,9 @@ def generate_data(train=False, use_best_point=False):
                               ground_truth_dir=ground_truth_dir)
         extract_largest_connected_component(
             in_dir=os.path.join(i_dir[1], 'best_rewards'), out_dir=os.path.join(i_dir[1], 'largest_connected'))
-    extract_bg(in_dir=raw_image_dir, out_dir=bg_masks_dir)
+    # 过滤出背景
+    extract_bg(in_dir=raw_image_dir, out_dir=bg_masks_dir,
+               ground_truth_dir=ground_truth_dir)
     # 复制最佳奖励文件
     copy_best_rewards(in_dir=ground_truth_dir, out_dir=expanded_dir,
                       ground_truth_dir=ground_truth_dir, index=0, is_ground_truth=True)
@@ -58,8 +60,8 @@ def generate_data(train=False, use_best_point=False):
                           ground_truth_dir=ground_truth_dir, index=i_dir[0])
     copy_best_rewards(in_dir=bg_masks_dir, out_dir=expanded_dir,
                       ground_truth_dir=ground_truth_dir, index=4, is_ground_truth=False)
-    # image_size = (512, 512)
-    image_size = None
+    image_size = (512, 512)
+    # image_size = None
     if train:
         # 调整图像大小并生成奖励
         resize_and_compare_images(

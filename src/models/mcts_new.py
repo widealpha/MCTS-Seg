@@ -25,9 +25,9 @@ class Utils:
         self.reward_model = reward_model
         # 设置 MCTS 参数
         # 预测max_points个点
-        self.max_points = 3
+        self.max_points = 2
         # 每次网格划分为K*K块
-        self.grid_size = 4
+        self.grid_size = 16
         # 每次模拟的次数
         self.num_simulations = 500
         # 允许使用背景点

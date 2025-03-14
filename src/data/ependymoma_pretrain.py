@@ -20,7 +20,6 @@ def pseudo_color_to_rgb_array(image_slice: np.ndarray, colormap: int = cv2.COLOR
         pseudo_color: 伪彩色图像数组(3D, shape=[3,H,W], dtype=np.uint8)
     """
     assert len(image_slice.shape) == 2, "输入必须是单通道灰度数组(2D)"
-    
 
     # 应用伪彩色映射(例如：COLORMAP_JET)
     pseudo_color = cv2.applyColorMap(image_slice, colormap)
@@ -35,6 +34,8 @@ def pseudo_color_to_rgb_array(image_slice: np.ndarray, colormap: int = cv2.COLOR
     return rgb_img
 
 # 通过窗宽窗位调整图像
+
+
 def window_image(image, window_center, window_width):
     """
     根据窗宽窗位调整图像
@@ -56,8 +57,8 @@ def window_image(image, window_center, window_width):
 def normalize_image(slice_data, method='minmax'):
     if method == 'minmax':
         # 将数据标准化到[0, 1]之间
-        MIN_BOUND = 300
-        MAX_BOUND = 1000
+        MIN_BOUND = 0
+        MAX_BOUND = np.max(slice_data)
         slice_data[slice_data > MAX_BOUND] = MAX_BOUND
         slice_data[slice_data < MIN_BOUND] = MIN_BOUND
         slice_data = (slice_data - MIN_BOUND) / (MAX_BOUND - MIN_BOUND)
@@ -133,7 +134,7 @@ def process(mode='train'):
                 image_id = subdir
                 # step设置为1
                 for i in range(0, seg_data.shape[2], 1):
-                    seg_slice = seg_data[:, :, i]
+                    seg_slice = np.rot90(seg_data[:, :, i])
                     seg_slice = seg_slice.astype(np.uint8)
                     # 核心区
                     seg_slice[seg_slice == 1] = 1
@@ -148,27 +149,33 @@ def process(mode='train'):
                     if seg_slice.max() == 0:
                         continue
                     seg_slice = (seg_slice * 255).astype(np.uint8)
-                    image_slice = image_data[:, :, i]
-                    image_slice = normalize_image(image_slice, 'minmax')
+
+                    image_slice = np.rot90(image_data[:, :, i])
+                    # image_slice = normalize_image(image_slice, 'minmax')
+                    image_slice = cv2.normalize(
+                        image_slice, None, 0, 255, cv2.NORM_MINMAX).astype(np.uint8)
+                    # image_slice = cv2.fastNlMeansDenoising(image_slice, h=10, templateWindowSize=7, searchWindowSize=21)
                     image_shape = image_slice.shape
 
-                    nonzero_indices = np.nonzero(image_slice)
-                    # 对于每个维度，找到最小和最大的索引
-                    min_indices = [np.min(idx) for idx in nonzero_indices]
-                    max_indices = [np.max(idx) for idx in nonzero_indices]
+                    nonzero_indices = np.nonzero(image_slice > 60)
+                    
+                    # 针对列方向计算裁剪范围（第2个维度）
+                    min_col = np.min(nonzero_indices[1]) if nonzero_indices[1].size > 0 else 0
+                    max_col = np.max(nonzero_indices[1]) if nonzero_indices[1].size > 0 else image_slice.shape[1]-1
+                    
+                    # 行方向保持完整（不裁剪）
+                    min_row = 0
+                    max_row = image_slice.shape[0]
+                    
+                    # 执行裁剪
+                    image_slice = image_slice[min_row:max_row, min_col:max_col+1]
+                    seg_slice = seg_slice[min_row:max_row, min_col:max_col+1]
 
-                    image_slice = image_slice[min_indices[0]:max_indices[0] +
-                                              1, min_indices[1]:max_indices[1]+1]
-                    seg_slice = seg_slice[min_indices[0]:max_indices[0] +
-                                          1, min_indices[1]:max_indices[1]+1]
-                    # # 获取image_slice除去0意外的最小值
-                    # min_value = np.min(image_slice[image_slice > 0])
-                    # max_value = np.max(image_slice)
-                    # # 仅仅改变非0的值映射到1-255之间
-                    # image_slice[image_slice > 0] = (image_slice[image_slice > 0] - 1) / \
-                    #     (max_value - min_value) * 254 + 1
-                    # 使用minmax标准化，并映射到0-255之间
-                    image_slice = (image_slice * 255).astype(np.uint8)
+                    clahe = cv2.createCLAHE(clipLimit=2.5, tileGridSize=(8, 8))
+                    image_slice = clahe.apply(image_slice)
+                    blurred = cv2.GaussianBlur(image_slice, (5, 5), 1.0)
+                    image_slice = cv2.addWeighted(
+                        image_slice, 1.5, blurred, -0.5, 0)
                     seg_img = Image.fromarray(seg_slice, mode='L').resize(
                         image_shape, Image.NEAREST)
                     image_img = Image.fromarray(image_slice).resize(
@@ -181,44 +188,49 @@ def process(mode='train'):
                     seg_img.save(seg_output_path)
                     image_img.save(image_output_path)
 
-def dataset_normalize(raw_dir, out_dir):
-    """
-    对原始的MRI数据集的nii文件进行标准化处理
-    :param raw_dir: 原始数据集路径
-    :param out_dir: 输出路径
-    """
-    # 获取原始数据集的子目录
-    subdirs = os.listdir(raw_dir)
-    subdirs = sorted(subdirs)
-    subdirs = [d for d in subdirs if os.path.isdir(os.path.join(raw_dir, d))]
-    for subdir in tqdm(subdirs, desc='Processing subdirectories'):
-        for file in os.listdir(os.path.join(raw_dir, subdir)):
-            if 'T1SC.nii' in file:
-                image_file_path = os.path.join(raw_dir, subdir, file)
-                image_nii = nib.load(image_file_path)
-                image_data = image_nii.get_fdata()
-                image_id = subdir
-                # step设置为1
-                for i in range(0, image_data.shape[2], 1):
-                    image_slice = image_data[:, :, i]
-                    image_slice = normalize_image(image_slice, 'minmax')
-                    image_shape = image_slice.shape
 
-                    nonzero_indices = np.nonzero(image_slice)
-                    # 对于每个维度，找到最小和最大的索引
-                    min_indices = [np.min(idx) for idx in nonzero_indices]
-                    max_indices = [np.max(idx) for idx in nonzero_indices]
+# def dataset_normalize(raw_dir, out_dir):
+#     """
+#     对原始的MRI数据集的nii文件进行标准化处理
+#     :param raw_dir: 原始数据集路径
+#     :param out_dir: 输出路径
+#     """
+#     # 获取原始数据集的子目录
+#     subdirs = os.listdir(raw_dir)
+#     subdirs = sorted(subdirs)[:1]
+#     subdirs = [d for d in subdirs if os.path.isdir(os.path.join(raw_dir, d))]
+#     for subdir in tqdm(subdirs, desc='Processing subdirectories'):
+#         for file in os.listdir(os.path.join(raw_dir, subdir)):
+#             if 'T1SC.nii' in file:
+#                 image_file_path = os.path.join(raw_dir, subdir, file)
+#                 image_nii = nib.load(image_file_path)
+#                 image_data = image_nii.get_fdata()
+#                 image_id = subdir
+#                 # step设置为1
+#                 for i in range(0, image_data.shape[2], 1):
+#                     image_slice = image_data[:, :, i]
+#                     image_slice = normalize_image(image_slice, 'minmax')
+#                     image_shape = image_slice.shape
 
-                    image_slice = image_slice[min_indices[0]:max_indices[0] +
-                                              1, min_indices[1]:max_indices[1]+1]
-                    # 使用minmax标准化，并映射到0-255之间
-                    image_slice = (image_slice * 255).astype(np.uint8)
-                    image_img = Image.fromarray(image_slice).resize(
-                        image_shape, Image.BICUBIC)
-                    output_filename = f"{image_id}_{i}.png"
-                    image_output_path = os.path.join(
-                        out_dir, output_filename)
-                    image_img.save(image_output_path)
+#                     nonzero_indices = np.nonzero(image_slice)
+#                     # 对于每个维度，找到最小和最大的索引
+#                     min_indices = [np.min(idx) for idx in nonzero_indices]
+#                     max_indices = [np.max(idx) for idx in nonzero_indices]
+
+#                     image_slice = image_slice[min_indices[0]:max_indices[0] +
+#                                               1, min_indices[1]:max_indices[1]+1]
+#
+#
+#                     # 使用minmax标准化，并映射到0-255之间
+#                     image_slice = (image_slice * 255).astype(np.uint8)
+
+#                     image_img = Image.fromarray(image_slice).resize(
+#                         image_shape, Image.BICUBIC)
+#                     output_filename = f"{image_id}_{i}.png"
+#                     image_output_path = os.path.join(
+#                         out_dir, output_filename)
+#                     image_img.save(image_output_path)
+
 
 if __name__ == '__main__':
     process('train')
