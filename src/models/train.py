@@ -32,7 +32,7 @@ def train(old_check_point=None):
     optimizer = optim.Adam(model.parameters(), lr=lr,
                            weight_decay=weight_decay)
     # 训练循环
-    epochs = 60
+    epochs = 20
     scaler = torch.amp.GradScaler(device)
 
     for epoch in range(epochs):

@@ -44,14 +44,14 @@ def generate_data(train=False, use_best_point=False):
     # sam_auto_mask(in_dir=raw_image_dir, out_dir=auto_masks_dir,
     #               ground_truth_dir=ground_truth_dir)
 
-    for i_dir in random_point_masks_dir:
-        sam_random_point_mask(point_number=i_dir[0], in_dir=raw_image_dir, out_dir=i_dir[1],
-                              ground_truth_dir=ground_truth_dir)
-        extract_largest_connected_component(
-            in_dir=os.path.join(i_dir[1], 'best_rewards'), out_dir=os.path.join(i_dir[1], 'largest_connected'))
-    # 过滤出背景
-    extract_bg(in_dir=raw_image_dir, out_dir=bg_masks_dir,
-               ground_truth_dir=ground_truth_dir)
+    # for i_dir in random_point_masks_dir:
+    #     sam_random_point_mask(point_number=i_dir[0], in_dir=raw_image_dir, out_dir=i_dir[1],
+    #                           ground_truth_dir=ground_truth_dir)
+    #     extract_largest_connected_component(
+    #         in_dir=os.path.join(i_dir[1], 'best_rewards'), out_dir=os.path.join(i_dir[1], 'largest_connected'))
+    # # 过滤出背景
+    # extract_bg(in_dir=raw_image_dir, out_dir=bg_masks_dir,
+    #            ground_truth_dir=ground_truth_dir)
     # 复制最佳奖励文件
     copy_best_rewards(in_dir=ground_truth_dir, out_dir=expanded_dir,
                       ground_truth_dir=ground_truth_dir, index=0, is_ground_truth=True)

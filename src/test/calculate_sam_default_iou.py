@@ -99,8 +99,8 @@ def calculate_score(mask_dir, ground_truth_dir, score_type='iou'):
 
 
 def main():
-    split = 'test'
-    score_type = 'dice'
+    split = 'train'
+    score_type = 'iou'
     print(f"Current dataset {dataset}")
     print(f"Current score type {score_type}")
     ground_truth_dir = os.path.join(data_path, f'raw/{split}/ground_truth')

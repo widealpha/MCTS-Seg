@@ -45,7 +45,7 @@ class MCTSISICDataset(Dataset):
 
 
 def get_mcts_test_loader(batch_size=1, shuffle=False):
-    data_dir = os.path.join(data_path, 'processed/test/resized')
+    data_dir = os.path.join(data_path, 'processed/train/resized')
     dataset = MCTSISICDataset(image_dir=data_dir)
     dataloader = DataLoader(
         dataset, batch_size=batch_size, shuffle=shuffle)

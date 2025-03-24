@@ -25,11 +25,11 @@ class Utils:
         self.reward_model = reward_model
         # 设置 MCTS 参数
         # 预测max_points个点
-        self.max_points = 2
+        self.max_points = 3
         # 每次网格划分为K*K块
-        self.grid_size = 16
+        self.grid_size = 4
         # 每次模拟的次数
-        self.num_simulations = 500
+        self.num_simulations = 100
         # 允许使用背景点
         self.enable_background = False
 
@@ -293,12 +293,17 @@ class GameState:
     def __init__(
         self,
         action_history: List[List[int]] = None,
+        action_history_label: List[int] = None,
         current_action: List[int] = None,
+        current_action_label: int = 1,
     ) -> None:
         self.action_history: List[List[int]
                                   ] = action_history if action_history is not None else []
+        self.action_history_label: List[int] = action_history_label if action_history_label is not None else [
+        ]
         self.current_action: List[int] = current_action if current_action is not None else [
         ]
+        self.current_action_label = current_action_label
         self.reward: float = None
 
     def is_terminal(self) -> bool:
@@ -309,7 +314,7 @@ class GameState:
         """
         return utils.grid.is_fully_subdivided(self.current_action)
 
-    def get_possible_moves(self) -> List[List[int]]:
+    def get_possible_moves(self) -> List[Tuple[List[int], int]]:
         """
         返回当前状态下所有合法的下一步动作（新的选择路径）。
         包括：
@@ -317,31 +322,54 @@ class GameState:
           - 若当前状态非根状态，还包括同级替换（siblings）的选择
         """
         actions = utils.grid.get_possible_actions(self.current_action)
-        moves: List[List[int]] = [move for move, coord in actions["children"]]
-        if self.current_action:
-            moves.extend([move for move, coord in actions["siblings"]])
+        moves: List[Tuple[List[int], int]] = []
+        # 是否允许背景点选择
+        if utils.enable_background:
+            if self.current_action:
+                moves.extend([(move, 1)
+                             for move, coord in actions["children"]])
+                moves.extend([(move, 0)
+                             for move, coord in actions["children"]])
+                moves.extend([(move, 1)
+                             for move, coord in actions["siblings"]])
+                moves.extend([(move, 0)
+                             for move, coord in actions["siblings"]])
+            else:
+                moves.extend([(move, 1)
+                             for move, coord in actions["children"]])
+                moves.extend([(move, 0)
+                             for move, coord in actions["children"]])
+
+        else:
+            moves.extend([(move, 1) for move, coord in actions["children"]])
+            if self.current_action:
+                moves.extend([(move, 1)
+                             for move, coord in actions["siblings"]])
         return moves
 
-    def get_possible_children_moves(self) -> List[List[int]]:
+    def get_possible_children_moves(self) -> Tuple[List[int], int]:
         """
         返回当前状态下所有合法的下一步动作（新的选择路径）。
         包括：
           - 当前区域进一步细分后的各子块（children）
         """
         actions = utils.grid.get_possible_actions(self.current_action)
-        moves: List[List[int]] = [move for move, coord in actions["children"]]
+        moves: List[List[int]] = [(move, self.current_action_label)
+                                  for move, coord in actions["children"]]
         return moves
 
-    def apply_move(self, move: List[int]) -> GameState:
+    def apply_move(self, move: Tuple[List[int], int]) -> GameState:
         """
         根据给定的动作（新的选择路径）生成新的状态。
         更新方式：将当前状态的 current_action 追加到 action_history 中，
         并将新的 move 作为新的 current_action 返回。
         """
         new_history = self.action_history.copy()
+        new_history_label = self.action_history_label.copy()
         if self.current_action:  # 记录历史（根状态 current_action 为空时不记录）
             new_history.append(self.current_action)
-        return GameState(action_history=new_history, current_action=move)
+            new_history_label.append(self.current_action_label)
+        return GameState(action_history=new_history, action_history_label=new_history_label, current_action=move[0], current_action_label=move[1])
 
     def all_action_points(self) -> List[Tuple[int, int]]:
         """
@@ -357,12 +385,15 @@ class GameState:
     def all_action_labels(self) -> List[int]:
         """
         根据历史动作和当前动作，生成对应的标签列表。
-        这里简单假设所有点都是正样本，标签均为 1。
         """
-        all_actions = self.action_history.copy()
+        all_action_labels = self.action_history_label.copy()
         if self.current_action:
-            all_actions.append(self.current_action)
-        return [1 for _ in all_actions]
+            all_action_labels.append(self.current_action_label)
+        return all_action_labels
+        # all_actions = self.action_history.copy()
+        # if self.current_action:
+        #     all_actions.append(self.current_action)
+        # return [1 for _ in all_actions]
 
     def get_reward(self) -> float:
         """
@@ -401,7 +432,8 @@ class Node:
         self.wins: float = 0.0
         self.visits: int = 0
         # 节点初始化时获得当前状态的所有可用动作
-        self.untried_moves: List[Any] = state.get_possible_moves()
+        self.untried_moves: List[Tuple[List[int], int]
+                                 ] = state.get_possible_moves()
 
     def expand(self) -> Node:
         """
@@ -487,7 +519,23 @@ class MCTS:
         return self.root.best_child(c_param=0)
 
 
-if __name__ == '__main__':
+def add_action_to_node(root: Node,  action_history: List[List[int]] = None,
+                       action_history_label: List[int] = None):
+    """从root节点向下，修改所有的state将，action_history的内容和label都添加到state最前面"""
+    queue = [root]
+    while queue:
+        current_node = queue.pop(0)
+        # Prepend the action_history and labels to the current state
+        current_node.state.action_history = action_history + \
+            current_node.state.action_history
+        current_node.state.action_history_label = action_history_label + \
+            current_node.state.action_history_label
+        current_node.state.reward = None
+        # Add children to the queue for further processing
+        queue.extend(current_node.children)
+
+
+def run_mcts(results_dir):
     print(f"Start MCTS Test Dataset:{dataset} ...")
     test_loader = get_mcts_test_loader()
     first_sample = test_loader.dataset[0]
@@ -498,7 +546,7 @@ if __name__ == '__main__':
     reward_model = load_model(
         model_name='latest.pth', sample_width=sample_width, sample_height=sample_height)
     utils = Utils(predictor=predictor, reward_model=reward_model)
-    results_dir = get_mcts_path()
+
     os.makedirs(results_dir, exist_ok=True)
     with open(os.path.join(results_dir, 'info.log'), 'w') as f:
         f.write(f"Global Info: {utils}\n")
@@ -509,15 +557,16 @@ if __name__ == '__main__':
 
         utils.set_image(image)
         initial_state = GameState()
+        bg_state = GameState(action_history_label=0)
         root = Node(initial_state)
+        bg_root = Node(bg_state)
 
         max_points = utils.max_points
         best_node = root
-        for _ in range(max_points):
-            # history_action = best_node.state.action_history.copy()
-            # history_action.append(best_node.state.current_action)
+        for i in range(max_points):
             mcts = MCTS(best_node)
             best_node = mcts.search(iterations=utils.num_simulations)
+
         points = np.array(best_node.state.all_action_points())
         labels = np.array(best_node.state.all_action_labels())
 
@@ -534,6 +583,8 @@ if __name__ == '__main__':
             f.write(f"Best labels: {labels.tolist()}\n")
             f.write(f"Reward: {reward}\n")
 
+
+def calculate_iou_dice(results_dir):
     with open(os.path.join(results_dir, 'info.log'), 'a') as f:
         iou_results = []
         dice_results = []  # 新增列表保存每个Dice值
@@ -549,6 +600,8 @@ if __name__ == '__main__':
         mean_dice = np.mean(dice_results)                # 计算Dice均值
         f.write(f"Mean IoU: {mean_iou}\n")
         f.write(f"Mean Dice: {mean_dice}\n")             # 追加Dice结果
+        print(f"Mean IoU: {mean_iou}")
+        print(f"Mean Dice: {mean_dice}")                  # 打印Dice结果
     with open(os.path.join(results_dir, 'info.log'), 'a') as f:
         # 计算所有f'{image_id}_reward.txt'的均值并追加进去
         reward_results = []
@@ -561,5 +614,15 @@ if __name__ == '__main__':
                             reward_results.append(reward)
         mean_reward = np.mean(reward_results)
         f.write(f"Mean Reward: {mean_reward}\n")
+        print(f"Mean Reward: {mean_reward}")
 
+
+def main():
+    result_dir = get_mcts_path()
+    # run_mcts(results_dir=result_dir)
+    calculate_iou_dice(results_dir=result_dir)
     print("Done!")
+
+
+if __name__ == '__main__':
+    main()

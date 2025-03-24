@@ -6,6 +6,8 @@ from PIL import Image
 from scipy.ndimage import gaussian_filter
 from tqdm import tqdm
 from matplotlib import pyplot as plt
+import random
+from utils.helpers import setup_seed
 
 
 def pseudo_color_to_rgb_array(image_slice: np.ndarray, colormap: int = cv2.COLORMAP_RAINBOW):
@@ -112,11 +114,13 @@ def process(mode='train'):
     os.makedirs(output_image_dir, exist_ok=True)
     os.makedirs(output_gt_dir, exist_ok=True)
     subdirs = os.listdir(input_dir)
-    subdirs = sorted(subdirs)
     subdirs = [d for d in subdirs if os.path.isdir(os.path.join(input_dir, d))]
-    # 训练集测试集1:2划分
-    test_subdirs = subdirs[::3]
-    train_subdirs = [d for i, d in enumerate(subdirs) if i % 3 != 0]
+    # 训练集测试集1:3划分
+    setup_seed()
+    random.shuffle(subdirs)
+    split_idx = len(subdirs) // 4
+    test_subdirs = subdirs[:split_idx]
+    train_subdirs = subdirs[split_idx:]
     if mode == 'train':
         subdirs = train_subdirs
     else:
@@ -144,7 +148,7 @@ def process(mode='train'):
                     seg_slice[seg_slice == 4] = 1
                     # 水肿
                     seg_slice[seg_slice == 2] = 0
-                    if np.sum(seg_slice == 1) < 4:
+                    if np.sum(seg_slice == 1) < 2:
                         continue
                     if seg_slice.max() == 0:
                         continue
@@ -152,30 +156,45 @@ def process(mode='train'):
 
                     image_slice = np.rot90(image_data[:, :, i])
                     # image_slice = normalize_image(image_slice, 'minmax')
-                    image_slice = cv2.normalize(
-                        image_slice, None, 0, 255, cv2.NORM_MINMAX).astype(np.uint8)
+                    # image_slice = window_image(image_slice, 250, 50)
+
+                    lower, upper = np.percentile(
+                        image_slice[image_slice > 0], [0.5, 99.5])
+                    image_slice = np.clip(image_slice, lower, upper)
+                    image_slice = ((image_slice - lower) /
+                                   (upper - lower) * 255.0).astype(np.uint8)
+                    # seg_slice = np.clip(seg_slice, lower, upper)
+                    # image_slice = cv2.normalize(
+                    #     image_slice, None, 0, 255, cv2.NORM_MINMAX).astype(np.uint8)
                     # image_slice = cv2.fastNlMeansDenoising(image_slice, h=10, templateWindowSize=7, searchWindowSize=21)
                     image_shape = image_slice.shape
 
-                    nonzero_indices = np.nonzero(image_slice > 60)
-                    
-                    # 针对列方向计算裁剪范围（第2个维度）
-                    min_col = np.min(nonzero_indices[1]) if nonzero_indices[1].size > 0 else 0
-                    max_col = np.max(nonzero_indices[1]) if nonzero_indices[1].size > 0 else image_slice.shape[1]-1
-                    
-                    # 行方向保持完整（不裁剪）
-                    min_row = 0
-                    max_row = image_slice.shape[0]
-                    
-                    # 执行裁剪
-                    image_slice = image_slice[min_row:max_row, min_col:max_col+1]
-                    seg_slice = seg_slice[min_row:max_row, min_col:max_col+1]
+                    # rows, cols = np.where(image_slice > 0)
+                    # row_low, row_high = np.percentile(rows, [0.5, 99.5])
+                    # col_low, col_high = np.percentile(cols, [0.5, 99.5])
+                    # row_low, row_high = int(row_low), int(row_high)
+                    # col_low, col_high = int(col_low), int(col_high)
+                    # image_slice = image_slice[row_low:row_high,
+                    #                           col_low:col_high]
+                    # seg_slice = seg_slice[row_low:row_high, col_low:col_high]
 
-                    clahe = cv2.createCLAHE(clipLimit=2.5, tileGridSize=(8, 8))
-                    image_slice = clahe.apply(image_slice)
-                    blurred = cv2.GaussianBlur(image_slice, (5, 5), 1.0)
-                    image_slice = cv2.addWeighted(
-                        image_slice, 1.5, blurred, -0.5, 0)
+                    # 针对列方向计算裁剪范围（第2个维度）
+                    # min_col = np.min(nonzero_indices[1]) if nonzero_indices[1].size > 0 else 0
+                    # max_col = np.max(nonzero_indices[1]) if nonzero_indices[1].size > 0 else image_slice.shape[1]-1
+
+                    # # 行方向保持完整（不裁剪）
+                    # min_row = 0
+                    # max_row = image_slice.shape[0]
+
+                    # # 执行裁剪
+                    # image_slice = image_slice[min_row:max_row, min_col:max_col+1]
+                    # seg_slice = seg_slice[min_row:max_row, min_col:max_col+1]
+
+                    # clahe = cv2.createCLAHE(clipLimit=2.5, tileGridSize=(8, 8))
+                    # image_slice = clahe.apply(image_slice)
+                    # blurred = cv2.GaussianBlur(image_slice, (5, 5), 1.0)
+                    # image_slice = cv2.addWeighted(
+                    #     image_slice, 1.5, blurred, -0.5, 0)
                     seg_img = Image.fromarray(seg_slice, mode='L').resize(
                         image_shape, Image.NEAREST)
                     image_img = Image.fromarray(image_slice).resize(

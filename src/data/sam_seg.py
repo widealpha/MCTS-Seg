@@ -182,7 +182,6 @@ def sam_random_point_mask(point_number, in_dir, ground_truth_dir, out_dir):
                 # 获取gt_array中的point_number - (point_number / 2)个>0的点
                 y_indices_0, x_indices_0 = np.where(gt_array == 0)
                 y_indices_1, x_indices_1 = np.where(gt_array > 0)
-
                 if len(y_indices_0) > 0:
                     indices_0 = np.random.choice(len(y_indices_0), min(
                         point_number // 2, len(y_indices_0)), replace=False)
