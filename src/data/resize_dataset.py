@@ -53,9 +53,10 @@ def compute_surface_voxels(binary_mask):
     surface = binary_mask ^ eroded
     return surface
 
+
 def average_surface_distance(mask: np.ndarray, ground_truth: np.ndarray):
     """使用 GPU 计算平均表面距离"""
-    
+
     # 获取表面点
     mask_surface = compute_surface_voxels(mask)
     gt_surface = compute_surface_voxels(ground_truth)
@@ -68,7 +69,8 @@ def average_surface_distance(mask: np.ndarray, ground_truth: np.ndarray):
         return float('inf')  # 避免空掩码情况
 
     # 转换为 GPU Tensor
-    mask_pts_tensor = torch.tensor(mask_pts, dtype=torch.float32, device='cuda')
+    mask_pts_tensor = torch.tensor(
+        mask_pts, dtype=torch.float32, device='cuda')
     gt_pts_tensor = torch.tensor(gt_pts, dtype=torch.float32, device='cuda')
 
     # 计算两组点之间的欧几里得距离矩阵
@@ -213,8 +215,8 @@ def resize_and_compare_images(in_dir, out_dir, raw_dir, size=(1024, 1024), train
 
         # Resize images
         if size is not None:
-            image = image.resize(size)
-            ground_truth = ground_truth.resize(size,Image.NEAREST)
+            image = image.resize(size, Image.NEAREST)
+            ground_truth = ground_truth.resize(size, Image.NEAREST)
             raw_image = raw_image.resize(size, Image.LANCZOS)
 
         mask = np.array(image)

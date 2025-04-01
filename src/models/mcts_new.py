@@ -29,11 +29,11 @@ class Utils:
         # 每次网格划分为K*K块
         self.grid_size = 4
         # 每次模拟的次数
-        self.num_simulations = 100
+        self.num_simulations = 1000
         # 允许使用背景点
-        self.enable_background = False
+        self.enable_background = True
 
-    def set_image(self, image: torch.Tensor):
+    def set_image(self, image: torch.Tensor, image_id: str = None):
         # (C, H, W)
         self.image = image
         # 将(C,H,W)转换为(H,W,C)
@@ -47,10 +47,11 @@ class Utils:
         # 获取图像的宽和高
         self.width = image.shape[2]
         self.height = image.shape[1]
-        predictor.set_image(self.image_array)
+        self.predictor.set_image(self.image_array)
         # 网格划分的最大深度
         self.grid = DynamicGrid(
             n=min(self.width, self.height), m=self.grid_size)
+        self.image_id = image_id
 
     def __str__(self):
         return (f"GlobalInfo(max_points={self.max_points}, grid_size={self.grid_size}, "
@@ -171,13 +172,20 @@ class DynamicGrid:
             top_left_x += col * cell_size
             top_left_y += row * cell_size
             size = cell_size
+
+        # 确保返回的 size 不小于 1
+        size = max(size, 1)
         return int(round(top_left_x)), int(round(top_left_y)), size
 
     def get_coordinate(self, selection: List[int]) -> Tuple[int, int]:
         """
-        根据选择列表返回当前区域中心点的坐标（整数）
+        根据选择列表返回当前区域中心点的坐标（整数）。
+        如果网格大小不足以支持划分，则直接返回左上角坐标。
         """
         top_left_x, top_left_y, size = self._get_region(selection)
+        if size <= 1:
+            # 如果网格大小不足以划分，返回左上角坐标
+            return int(round(top_left_x)), int(round(top_left_y))
         center_x: int = int(round(top_left_x + size / 2))
         center_y: int = int(round(top_left_y + size / 2))
         return center_x, center_y
@@ -190,22 +198,28 @@ class DynamicGrid:
           - siblings: 在父区域中，同一级别下除当前选中块之外的其他块，
                       新的选择路径为 selection[:-1] + [其他块编号]
 
-        返回的字典键：
-          "children": List[(new_selection, (x, y))]
-          "siblings": List[(new_selection, (x, y))]
+        如果当前区域大小不足以支持 m*m 的划分，则返回实际可划分的数量。
         """
         actions: Dict[str, List[Tuple[List[int], Tuple[int, int]]]] = {
             "siblings": [], "children": []}
 
         # 当前区域
         cur_top_left_x, cur_top_left_y, cur_size = self._get_region(selection)
+
+        # 如果当前区域大小为 1，则无法进一步细分
+        if cur_size == 1:
+            return actions
+
+        # 动态调整划分数量，确保不会超过当前网格的大小
+        actual_m = min(self.m, int(cur_size))  # 实际划分数量不能超过当前网格大小
+
         # 子动作：对当前区域进一步划分
-        for i in range(1, self.m * self.m + 1):
+        for i in range(1, actual_m * actual_m + 1):
             new_selection = selection + [i]
             index = i - 1
-            row = index // self.m
-            col = index % self.m
-            cell_size = cur_size / self.m
+            row = index // actual_m
+            col = index % actual_m
+            cell_size = cur_size / actual_m
             center_x = int(round(cur_top_left_x + col *
                            cell_size + cell_size / 2))
             center_y = int(round(cur_top_left_y + row *
@@ -217,14 +231,14 @@ class DynamicGrid:
             parent_top_left_x, parent_top_left_y, parent_size = self._get_region(
                 selection[:-1])
             current_choice = selection[-1]
-            for i in range(1, self.m * self.m + 1):
+            for i in range(1, actual_m * actual_m + 1):
                 if i == current_choice:
                     continue  # 跳过当前选择
                 new_selection = selection[:-1] + [i]
                 index = i - 1
-                row = index // self.m
-                col = index % self.m
-                cell_size = parent_size / self.m
+                row = index // actual_m
+                col = index % actual_m
+                cell_size = parent_size / actual_m
                 center_x = int(round(parent_top_left_x +
                                col * cell_size + cell_size / 2))
                 center_y = int(round(parent_top_left_y +
@@ -240,7 +254,7 @@ class DynamicGrid:
     def is_fully_subdivided(self, selection: List[int]) -> bool:
         """
         判断当前区域是否已经划分到不能再划分的地步。
-        判定标准：若对当前区域进一步划分(即 size / m)的结果小于 1,则认为无法再划分。
+        判定标准：若当前区域的网格大小刚好为 1，则认为无法再划分。
 
         参数:
             selection: 选择列表，表示当前划分路径
@@ -249,8 +263,7 @@ class DynamicGrid:
             True 表示已不能再进一步划分，否则 False。
         """
         _, _, size = self._get_region(selection)
-        cell_size = size / self.m
-        return cell_size < 1
+        return size == 1  # 修改为判断网格大小是否刚好为 1
 
     @staticmethod
     def _test():
@@ -512,7 +525,7 @@ class MCTS:
         """
         执行指定次数的迭代搜索，返回根节点下访问次数最多的子节点作为最佳选择。
         """
-        for _ in tqdm(range(iterations), desc=f'{image_id} MCTS Iteration', position=1, leave=False):
+        for _ in tqdm(range(iterations), desc=f'{utils.image_id} MCTS Iteration', position=1, leave=False):
             leaf = self.select(self.root)
             reward = self.simulation(leaf.state)
             self.backup(leaf, reward)
@@ -545,6 +558,7 @@ def run_mcts(results_dir):
     predictor = SamPredictor(sam)
     reward_model = load_model(
         model_name='latest.pth', sample_width=sample_width, sample_height=sample_height)
+    global utils
     utils = Utils(predictor=predictor, reward_model=reward_model)
 
     os.makedirs(results_dir, exist_ok=True)
@@ -555,7 +569,7 @@ def run_mcts(results_dir):
         mask = data['mask'][0].to(device)
         image_id = data['image_id'][0]
 
-        utils.set_image(image)
+        utils.set_image(image=image, image_id=image_id)
         initial_state = GameState()
         bg_state = GameState(action_history_label=0)
         root = Node(initial_state)
@@ -619,7 +633,7 @@ def calculate_iou_dice(results_dir):
 
 def main():
     result_dir = get_mcts_path()
-    # run_mcts(results_dir=result_dir)
+    run_mcts(results_dir=result_dir)
     calculate_iou_dice(results_dir=result_dir)
     print("Done!")
 

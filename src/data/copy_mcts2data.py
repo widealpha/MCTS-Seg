@@ -63,4 +63,5 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     copy_mask_files(args.mask_id, args.overwrite)
+    # copy_mask_files(5, False)
     recalculate_mask_rewards()

@@ -32,7 +32,7 @@ def train(old_check_point=None):
     optimizer = optim.Adam(model.parameters(), lr=lr,
                            weight_decay=weight_decay)
     # 训练循环
-    epochs = 20
+    epochs = 60
     scaler = torch.amp.GradScaler(device)
 
     for epoch in range(epochs):
@@ -60,12 +60,12 @@ def train(old_check_point=None):
         print(
             f"Epoch [{epoch + 1}/{epochs}], Train Loss:{train_loss / train_steps}")
         # 评估模型在测试集上的表现
-        test(model, test_dataloader, log_writer, epoch, criterion)
+        test(model, test_dataloader, log_writer, epoch)
         if epoch % 5 == 0:
             torch.save(model.state_dict(), os.path.join(
                 checkpoints_path, f'{datetime.now().strftime("%Y-%m-%d_%H-%M-%S")}.pth'))
 
-    test(model, test_dataloader, log_writer, epoch, criterion)
+    test(model, test_dataloader, log_writer, epoch)
     latest_model_name = f'{datetime.now().strftime("%Y-%m-%d_%H-%M-%S")}.pth'
     torch.save(model.state_dict(), os.path.join(
         checkpoints_path, latest_model_name))
@@ -81,24 +81,38 @@ def train(old_check_point=None):
     log_writer.close()
 
 
-def test(model, test_dataloader, log_writer, epoch, criterion):
-    # 评估模型在测试集上的表现
-    test_loss = 0.0
-    test_steps = 0
+def test(model, test_dataloader, log_writer, epoch):
+    total_mse = 0.0
+    total_mae = 0.0
+    total_samples = 0
+    
     model.eval()
     with torch.no_grad():
-        for batch in tqdm(test_dataloader, desc=f'Test {epoch + 1}'):
+        for batch in tqdm(test_dataloader):
             image = batch['image'].to(device)
             mask = batch['mask'].to(device)
             reward = batch['reward'].float().unsqueeze(1).to(device)
-
+            
             reward_pred = model(image, mask)
-            loss = criterion(reward_pred, reward)
-            test_loss += loss.item()
-            test_steps += 1
-    log_writer.add_scalar('Loss/test', test_loss / test_steps, epoch)
-    print(f"Epoch [{epoch + 1}], Test Loss: {test_loss / test_steps}")
-
+            
+            # 计算MSE和MAE
+            batch_mse = torch.mean((reward_pred - reward) ** 2)
+            batch_mae = torch.mean(torch.abs(reward_pred - reward))
+            
+            total_mse += batch_mse.item() * reward.size(0)
+            total_mae += batch_mae.item() * reward.size(0)
+            total_samples += reward.size(0)
+    
+    final_mse = total_mse / total_samples
+    final_rmse = final_mse ** 0.5
+    final_mae = total_mae / total_samples
+    
+    if log_writer is not None:
+        log_writer.add_scalar('MSE/test', final_mse, epoch)
+        log_writer.add_scalar('RMSE/test', final_rmse, epoch)
+        log_writer.add_scalar('MAE/test', final_mae, epoch)
+    
+    print(f"Epoch [{epoch + 1}], MSE: {final_mse:.4f}, RMSE: {final_rmse:.4f}, MAE: {final_mae:.4f}")
 
 if __name__ == '__main__':
     old_check_point = os.path.join(

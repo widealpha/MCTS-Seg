@@ -2,12 +2,15 @@ import torch
 from torch import nn
 import torch.nn.functional as F
 
+from resnet import DualInputResNet, ResidualBlock
 from unet_model import UNet
 
 
 class RewardPredictionModel(nn.Module):
     def __init__(self, sample_width=260, sample_height=260, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
+        # self.resnet = DualInputResNet(
+        #     ResidualBlock, [2, 2, 2, 2], sample_width, sample_height)
         self.unet = UNet(n_channels=4, n_classes=1)
         # 定义卷积层和池化层
         self.conv = nn.Conv2d(in_channels=1, out_channels=8,
@@ -31,6 +34,8 @@ class RewardPredictionModel(nn.Module):
             return int(torch.prod(torch.tensor(output.size()[1:])))
 
     def forward(self, image, mask):
+        # x = self.resnet(image, mask)
+        # return x
         # 将image和mask拼接成 (c+1, w, h)
         x = torch.cat((image, mask), dim=1)
         # 通过UNet网络
