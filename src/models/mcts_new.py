@@ -31,9 +31,13 @@ class Utils:
         # 每次模拟的次数
         self.num_simulations = 1000
         # 允许使用背景点
-        self.enable_background = True
+        self.enable_background = False
+        self.use_ground_truth = True
+        self.use_random_ground_truth = True
+        self.points = []
+        self.labels = []
 
-    def set_image(self, image: torch.Tensor, image_id: str = None):
+    def set_image(self, image: torch.Tensor, image_id: str = None, ground_truth=None):
         # (C, H, W)
         self.image = image
         # 将(C,H,W)转换为(H,W,C)
@@ -52,10 +56,49 @@ class Utils:
         self.grid = DynamicGrid(
             n=min(self.width, self.height), m=self.grid_size)
         self.image_id = image_id
+        if self.use_ground_truth and ground_truth is not None:
+            gt_array = ground_truth[0].cpu().numpy()
+            if self.use_random_ground_truth:
+                point_number = 1
+                points = []
+                labels = []
+                # 获取gt_array中的point_number / 2个=0的点
+                # 获取gt_array中的point_number - (point_number / 2)个>0的点
+                y_indices_0, x_indices_0 = np.where(gt_array == 0)
+                y_indices_1, x_indices_1 = np.where(gt_array > 0)
+                if len(y_indices_0) > 0:
+                    indices_0 = np.random.choice(len(y_indices_0), min(
+                        point_number // 2, len(y_indices_0)), replace=False)
+                    for idx in indices_0:
+                        points.append([x_indices_0[idx], y_indices_0[idx]])
+                        labels.append(0)
+
+                if len(y_indices_1) > 0:
+                    indices_1 = np.random.choice(len(y_indices_1), min(
+                        point_number - (point_number // 2), len(y_indices_1)), replace=False)
+                    for idx in indices_1:
+                        points.append([x_indices_1[idx], y_indices_1[idx]])
+                        labels.append(1)
+                self.points = points
+                self.labels = labels
+            else:
+                # 计算ground_truth的重心
+                y_indices, x_indices = np.where(gt_array > 0)
+                if len(y_indices) == 0:
+                    print(f"No foreground pixels found in ground truth for image.")
+                # 使用np.where(gt_array > 0)对应的矩形的中心点
+                min_y, max_y = np.min(y_indices), np.max(y_indices)
+                min_x, max_x = np.min(x_indices), np.max(x_indices)
+                center_y = (min_y + max_y) // 2
+                center_x = (min_x + max_x) // 2
+                # 使用重心作为前景点
+                self.points = [[center_x, center_y]]
+                self.labels = [1]
 
     def __str__(self):
         return (f"GlobalInfo(max_points={self.max_points}, grid_size={self.grid_size}, "
-                f"num_simulations={self.num_simulations}, enable_background={self.enable_background})")
+                f"num_simulations={self.num_simulations}, enable_background={self.enable_background}, "
+                f"use_ground_truth={self.use_ground_truth}, use_random_ground_truth={self.use_random_ground_truth})")
 
 
 def calculate_iou(mask1, mask2):
@@ -419,8 +462,8 @@ class GameState:
         if self.reward is not None:
             return self.reward
 
-        points = np.array(self.all_action_points())
-        labels = np.array(self.all_action_labels())
+        points = np.array(utils.points + self.all_action_points())
+        labels = np.array(utils.labels + self.all_action_labels())
         # 使用 SAM 生成新的 mask
         new_masks, _, _ = utils.predictor.predict(
             points, labels, multimask_output=False
@@ -569,7 +612,7 @@ def run_mcts(results_dir):
         mask = data['mask'][0].to(device)
         image_id = data['image_id'][0]
 
-        utils.set_image(image=image, image_id=image_id)
+        utils.set_image(image=image, image_id=image_id, ground_truth=mask)
         initial_state = GameState()
         bg_state = GameState(action_history_label=0)
         root = Node(initial_state)
@@ -581,8 +624,8 @@ def run_mcts(results_dir):
             mcts = MCTS(best_node)
             best_node = mcts.search(iterations=utils.num_simulations)
 
-        points = np.array(best_node.state.all_action_points())
-        labels = np.array(best_node.state.all_action_labels())
+        points = np.array(utils.points + best_node.state.all_action_points())
+        labels = np.array(utils.labels + best_node.state.all_action_labels())
 
         reward = best_node.state.get_reward()
 

@@ -1,7 +1,7 @@
 import os
 from data.extract_background import extract_bg
 from utils.helpers import get_data_path, get_root_path
-from data.sam_seg import sam_auto_mask, sam_point_mask, sam_point_mask_all_points, sam_random_point_mask
+from data.sam_seg import sam_auto_mask, sam_baseline_auto_mask, sam_baseline_point_mask, sam_point_mask, sam_point_mask_all_points, sam_random_point_mask
 # from data.select_image_best_rewards import select_best_rewards_all_image, select_best_rewards_image
 from data.extract_connected_part import extract_largest_connected_component
 from data.expand_dataset import copy_best_rewards
@@ -11,6 +11,26 @@ root_path = get_root_path()
 data_path = get_data_path()
 raw_path = os.path.join(data_path, 'raw')
 processed_path = os.path.join(data_path, 'processed')
+
+
+def generate_baseline(train=False):
+    # 定义目录路径
+    if train:
+        data_type = 'train'
+    else:
+        data_type = 'test'
+    print(f"Generating baseline data for {data_type} set")
+    raw_image_dir = os.path.join(raw_path, data_type, 'image')
+    ground_truth_dir = os.path.join(raw_path, data_type, 'ground_truth')
+    # 使用sam自动分割后存储mask的目录
+    point_baseline_dir = os.path.join(processed_path, data_type, 'baseline', 'point')
+    auto_baseline_dir = os.path.join(processed_path, data_type, 'baseline', 'auto')
+    # 生成 SAM 自动掩码
+    sam_baseline_point_mask(in_dir=raw_image_dir, out_dir=point_baseline_dir,
+                            ground_truth_dir=ground_truth_dir)
+
+    sam_baseline_auto_mask(in_dir=raw_image_dir, out_dir=auto_baseline_dir,
+                            ground_truth_dir=ground_truth_dir)
 
 
 def generate_data(train=False, use_best_point=False):
@@ -80,5 +100,6 @@ def generate_data(train=False, use_best_point=False):
 
 if __name__ == '__main__':
     # generate_data(train=True)  # 生成训练数据
-    # generate_data(train=True, use_best_point=False)  # 生成训练数据
+    generate_data(train=True, use_best_point=False)  # 生成训练数据
     generate_data(train=False, use_best_point=False)  # 生成测试数据
+    # generate_baseline(train=False)  # 生成测试数据

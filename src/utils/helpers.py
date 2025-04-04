@@ -8,7 +8,7 @@ from segment_anything import sam_model_registry
 from torch.utils.tensorboard import SummaryWriter
 
 device = "cuda" if torch.cuda.is_available() else "cpu"
-dataset = ["ISIC2016", "ISIC2018", "ISIC2016GREY", "brats2020", "ependymoma"][0]
+dataset = ["ISIC2016", "ISIC2018", "ISIC2016GREY", "brats2020", "ependymoma"][1]
 
 
 def get_root_path():
