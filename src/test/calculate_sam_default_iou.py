@@ -4,7 +4,7 @@ import numpy as np
 from PIL import Image
 from tqdm import tqdm
 
-from utils.helpers import get_data_path, get_log_path, get_mcts_path, get_root_path, dataset
+from utils.helpers import get_data_path, get_log_path, get_mcts_path, get_root_path
 from data.helpers import extract_image_id
 
 data_path = get_data_path()
@@ -100,7 +100,8 @@ def calculate_mean_and_variance_iou(mask_dir, ground_truth_dir, log_file="iou_lo
 
     mean_iou = np.mean(iou_results)
     variance_iou = calculate_variance(iou_results)
-    return mean_iou, variance_iou
+    std_dev_iou = np.std(iou_results)  # 添加标准差计算
+    return mean_iou, variance_iou, std_dev_iou
 
 
 def calculate_mean_dice(mask_dir, ground_truth_dir):
@@ -165,7 +166,8 @@ def calculate_mean_and_variance_dice(mask_dir, ground_truth_dir, log_file="dice_
 
     mean_dice = np.mean(dice_results)
     variance_dice = calculate_variance(dice_results)
-    return mean_dice, variance_dice
+    std_dev_dice = np.std(dice_results)  # 添加标准差计算
+    return mean_dice, variance_dice, std_dev_dice
 
 
 def calculate_score(mask_dir, ground_truth_dir, score_type='iou'):
@@ -178,12 +180,12 @@ def calculate_score(mask_dir, ground_truth_dir, score_type='iou'):
 
 def calculate_score_with_variance(mask_dir, ground_truth_dir, score_type='iou'):
     if score_type == 'iou':
-        mean, variance = calculate_mean_and_variance_iou(
+        mean, variance, std_dev = calculate_mean_and_variance_iou(
             mask_dir, ground_truth_dir)
     elif score_type == 'dice':
-        mean, variance = calculate_mean_and_variance_dice(
+        mean, variance, std_dev = calculate_mean_and_variance_dice(
             mask_dir, ground_truth_dir)
-    return mean, variance
+    return mean, variance, std_dev
 
 
 def rreplace(s, old, new, occurrence):
@@ -191,9 +193,9 @@ def rreplace(s, old, new, occurrence):
     return new.join(li)
 
 
-def main():
-    split = 'test'
-    score_type = 'iou'
+def main(split, score_type, dataset, data_path, mcts_path):
+    # split = 'test'
+    # score_type = 'dice'
     print(f"Current split {split}")
     print(f"Current dataset {dataset}")
     print(f"Current score type {score_type}")
@@ -214,9 +216,10 @@ def main():
     # score_mean, score_variance = calculate_score_with_variance(one_bg_two_fg, ground_truth_dir, score_type)
     # print(f"[Largest Connected] One Bg Two Fg Mean {score_type}: {score_mean}, Variance: {score_variance}")
 
-    score_mean, score_variance = calculate_score_with_variance(
+    score_mean, score_variance, score_std_dev = calculate_score_with_variance(
         mcts, ground_truth_dir, score_type)
-    print(f"MCTS Mean {score_type}: {score_mean}, Variance: {score_variance}")
+    print(
+        f"MCTS Mean {score_type}: {score_mean}, Variance: {score_variance}, Std Dev: {score_std_dev}")
 
     one_fg = os.path.join(
         data_path, f'processed/{split}/random_point_masks_1/best_rewards')
@@ -224,31 +227,31 @@ def main():
         data_path, f'processed/{split}/random_point_masks_2/best_rewards')
     one_bg_two_fg = os.path.join(
         data_path, f'processed/{split}/random_point_masks_3/best_rewards')
-    score_mean, score_variance = calculate_score_with_variance(
+    score_mean, score_variance, score_std_dev = calculate_score_with_variance(
         one_fg, ground_truth_dir, score_type)
     print(
-        f"[Best Reward] One Fg Mean {score_type}: {score_mean}, Variance: {score_variance}")
-    score_mean, score_variance = calculate_score_with_variance(
+        f"[Best Reward] One Fg Mean {score_type}: {score_mean}, Variance: {score_variance}, Std Dev: {score_std_dev}")
+    score_mean, score_variance, score_std_dev = calculate_score_with_variance(
         one_bg_one_fg, ground_truth_dir, score_type)
     print(
-        f"[Best Reward] One Bg One Fg Mean {score_type}: {score_mean}, Variance: {score_variance}")
-    score_mean, score_variance = calculate_score_with_variance(
+        f"[Best Reward] One Bg One Fg Mean {score_type}: {score_mean}, Variance: {score_variance}, Std Dev: {score_std_dev}")
+    score_mean, score_variance, score_std_dev = calculate_score_with_variance(
         one_bg_two_fg, ground_truth_dir, score_type)
     print(
-        f"[Best Reward] One Bg Two Fg Mean {score_type}: {score_mean}, Variance: {score_variance}")
+        f"[Best Reward] One Bg Two Fg Mean {score_type}: {score_mean}, Variance: {score_variance}, Std Dev: {score_std_dev}")
 
     point_baseline = os.path.join(
         data_path, f'processed/{split}/baseline/point')
     auto_baseline = os.path.join(
         data_path, f'processed/{split}/baseline/auto')
-    score_mean, score_variance = calculate_score_with_variance(
+    score_mean, score_variance, score_std_dev = calculate_score_with_variance(
         point_baseline, ground_truth_dir, score_type)
     print(
-        f"[Baseline] Center Point baseline {score_type}: {score_mean}, Variance: {score_variance}")
-    score_mean, score_variance = calculate_score_with_variance(
+        f"[Baseline] Center Point baseline {score_type}: {score_mean}, Variance: {score_variance}, Std Dev: {score_std_dev}")
+    score_mean, score_variance, score_std_dev = calculate_score_with_variance(
         auto_baseline, ground_truth_dir, score_type)
     print(
-        f"[Baseline] Auto Point baseline {score_type}: {score_mean}, Variance: {score_variance}")
+        f"[Baseline] Auto Point baseline {score_type}: {score_mean}, Variance: {score_variance}, Std Dev: {score_std_dev}")
 
 
 if __name__ == '__main__':
@@ -256,4 +259,9 @@ if __name__ == '__main__':
     # ground_truth_dir = os.path.join(data_path, f'raw/test/ground_truth')
     # iou = calculate_mean_iou(mcts, ground_truth_dir)
     # print(f"MCTS Mean IoU: {iou}")
-    main()
+    mcts_base_dir = os.path.join(root_path, 'result', 'mcts')
+    data_base_dir = os.path.join(get_root_path(), 'data')
+    data_path = os.path.join(data_base_dir, 'ISIC2016')
+    mcts_path = os.path.join(mcts_base_dir, 'ISIC2016')
+    main('test', 'iou', 'test', data_path, mcts_path)
+    main('test', 'dice', 'test', data_path, mcts_path)

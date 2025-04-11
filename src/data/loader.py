@@ -83,15 +83,15 @@ class ImageDataset(Dataset):
         }
 
 
-def get_data_loader(batch_size=16, shuffle=True, test_batch_size=16, test_shuffle=False):
+def get_data_loader(batch_size=16, shuffle=True, test_batch_size=16, test_shuffle=False, per_image_mask=None):
     # 路径
     train_dir = os.path.join(data_path, 'processed/train/resized')
     test_dir = os.path.join(data_path, 'processed/test/resized')
 
     # 创建数据集实例
-    train_dataset = ImageDataset(image_dir=train_dir)
+    train_dataset = ImageDataset(image_dir=train_dir, per_image_mask=per_image_mask)
     # 测试集只使用ground_truth不使用增强数据集
-    test_dataset = ImageDataset(image_dir=test_dir)
+    test_dataset = ImageDataset(image_dir=test_dir, per_image_mask=per_image_mask)
 
     # 创建数据加载器
     train_dataloader = DataLoader(

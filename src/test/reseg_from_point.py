@@ -37,8 +37,10 @@ def resegment_and_save(image_id, sam_model, input_dir, output_dir, image_dir,  g
 
     # 加载图像和 ground truth
     image_path = os.path.join(image_dir, f"{image_id}.jpg")
+    if not os.path.exists(image_path):
+        image_path = os.path.join(image_dir, f"{image_id}.png")
     ground_truth_path = os.path.join(
-        ground_truth_dir, f"{image_id}_Segmentation.png")
+        ground_truth_dir, f"{image_id}.png")
     if not os.path.exists(image_path) or not os.path.exists(ground_truth_path):
         print(f"Image or ground truth for {image_id} does not exist.")
         return
@@ -81,7 +83,7 @@ def calculate_average_iou_and_dice(input_dir, ground_truth_dir):
         if file_name.endswith("_mask.png"):
             mask_path = os.path.join(input_dir, file_name)
             ground_truth_path = os.path.join(
-                ground_truth_dir, file_name.replace("_mask.png", "_Segmentation.png"))
+                ground_truth_dir, file_name.replace("_mask.png", ".png"))
             if not os.path.exists(ground_truth_path):
                 continue
 
@@ -129,15 +131,15 @@ def main():
         image_id = image_file.replace("_raw.png", '')
         resegment_and_save(image_id, sam_model, input_dir,
                            output_dir, image_dir, ground_truth_dir)
-    # calculate_average_iou_and_dice(
-    #     os.path.join(output_dir), ground_truth_dir)
-    # average_iou, average_dice = calculate_average_iou_and_dice(
-    #     os.path.join(output_dir), ground_truth_dir)
-    # print(f"Average IOU: {average_iou}")
-    # print(f"Average Dice: {average_dice}")
-    # with open(os.path.join(output_dir, 'average_iou_and_dice.txt'), 'w') as f:
-    #     f.write(f"Average IOU: {average_iou}\n")
-    #     f.write(f"Average Dice: {average_dice}\n")
+    calculate_average_iou_and_dice(
+        os.path.join(output_dir), ground_truth_dir)
+    average_iou, average_dice = calculate_average_iou_and_dice(
+        os.path.join(output_dir), ground_truth_dir)
+    print(f"Average IOU: {average_iou}")
+    print(f"Average Dice: {average_dice}")
+    with open(os.path.join(output_dir, 'average_iou_and_dice.txt'), 'w') as f:
+        f.write(f"Average IOU: {average_iou}\n")
+        f.write(f"Average Dice: {average_dice}\n")
 
 
 if __name__ == '__main__':

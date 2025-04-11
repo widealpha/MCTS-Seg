@@ -8,7 +8,8 @@ from segment_anything import sam_model_registry
 from torch.utils.tensorboard import SummaryWriter
 
 device = "cuda" if torch.cuda.is_available() else "cpu"
-dataset = ["ISIC2016", "ISIC2018", "ISIC2016GREY", "brats2020", "ependymoma"][1]
+dataset = ["ISIC2016", "ISIC2018", "ISIC2016GREY", "brats2020",
+           "ependymoma", 'BUSI-benign', 'BUSI-malignant'][0]
 
 
 def get_root_path():
@@ -70,6 +71,30 @@ def load_sam():
     sam = sam_model_registry["vit_h"](checkpoint=path)
     sam.eval()
     return sam.to(device)
+
+def load_sam_adapter():
+    # load the original SAM model 
+    net = load_sam()
+    net.eval()
+
+    sam_weights = os.path.join(
+        get_root_path(), 'data/external/sam_vit_h_4b8939.pth')    # load the original SAM weight
+    with open(sam_weights, "rb") as f:
+        state_dict = torch.load(f)
+        new_state_dict = {k: v for k, v in state_dict.items() if k in net.state_dict() and net.state_dict()[k].shape == v.shape}
+        net.load_state_dict(new_state_dict, strict = False)
+
+    # load task-specific adapter
+    adapter_path = os.path.join(
+        get_root_path(), 'data/external/Melanoma_Photo_SAM_1024.pth')
+    checkpoint_file = os.path.join(adapter_path)
+    assert os.path.exists(checkpoint_file)
+    checkpoint = torch.load(checkpoint_file)
+
+    state_dict = checkpoint['state_dict']
+    new_state_dict = state_dict
+    net.load_state_dict(new_state_dict,strict = False)
+    return net
 
 
 def calculate_iou(pred_mask, true_mask):

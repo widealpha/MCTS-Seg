@@ -16,6 +16,7 @@ def process_isic2016(input_dir, output_dir, target_size=(1024, 1024)):
         with Image.open(os.path.join(input_dir, file)) as img:
             if "segmentation" in file.lower():
                 img_resized = img.resize(target_size, Image.NEAREST)
+                file = file.replace('_Segmentation.png', '.png')
             else:
                 img_resized = img.resize(target_size, Image.BICUBIC)
             output_file_path = os.path.join(output_dir, file)

@@ -34,6 +34,8 @@ def train(old_check_point=None):
     # 训练循环
     epochs = 60
     scaler = torch.amp.GradScaler(device)
+    test_loss = 100000
+    best_epoch = 0
 
     for epoch in range(epochs):
         model.train()
@@ -60,7 +62,13 @@ def train(old_check_point=None):
         print(
             f"Epoch [{epoch + 1}/{epochs}], Train Loss:{train_loss / train_steps}")
         # 评估模型在测试集上的表现
-        test(model, test_dataloader, log_writer, epoch)
+        loss, *rest = test(model, test_dataloader, log_writer, epoch)
+        if loss >= test_loss:
+            if best_epoch + 10 < epoch:
+                break
+        else:
+            test_loss = loss
+            best_epoch = epoch
         if epoch % 5 == 0:
             torch.save(model.state_dict(), os.path.join(
                 checkpoints_path, f'{datetime.now().strftime("%Y-%m-%d_%H-%M-%S")}.pth'))
@@ -113,6 +121,7 @@ def test(model, test_dataloader, log_writer, epoch):
         log_writer.add_scalar('MAE/test', final_mae, epoch)
     
     print(f"Epoch [{epoch + 1}], MSE: {final_mse:.4f}, RMSE: {final_rmse:.4f}, MAE: {final_mae:.4f}")
+    return final_mse, final_rmse, final_mae
 
 if __name__ == '__main__':
     old_check_point = os.path.join(

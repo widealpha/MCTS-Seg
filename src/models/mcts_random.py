@@ -11,12 +11,12 @@ from PIL import Image, ImageDraw
 from tqdm import tqdm
 from models.model import RewardPredictionModel
 from data.mcts_loader import get_mcts_test_loader
-from utils.helpers import get_checkpoints_path, get_mcts_path, load_sam_adapter, setup_seed, load_sam, device, dataset
+from utils.helpers import get_checkpoints_path, get_mcts_path, get_root_path, setup_seed, load_sam, device, dataset
 setup_seed()
-# sam = load_sam()
-sam = load_sam_adapter()
+sam = load_sam()
 checkpoints_path = get_checkpoints_path()
 utils: Utils = None
+
 
 class Utils:
     def __init__(self, predictor: SamPredictor, reward_model: RewardPredictionModel):
@@ -25,15 +25,15 @@ class Utils:
         self.reward_model = reward_model
         # 设置 MCTS 参数
         # 预测max_points个点
-        self.max_points = 4
+        self.max_points = 3
         # 每次网格划分为K*K块
         self.grid_size = 4
         # 每次模拟的次数
-        self.num_simulations = 50
+        self.num_simulations = 1000
         # 允许使用背景点
         self.enable_background = False
         self.use_ground_truth = False
-        self.use_random_ground_truth = False
+        self.use_random_ground_truth = True
         self.points = []
         self.labels = []
 
@@ -123,7 +123,7 @@ def load_model(model_name, sample_width, sample_height):
     return model
 
 
-def sam_seg_cal_reward(predictor, points, labels, image, ground_truth, image_id):
+def sam_seg_cal_reward(predictor, points, labels, image, ground_truth, image_id, results_dir):
     """
     使用 SAM 进行分割，结合 ground truth 计算 reward，reward 直接使用 IOU，结果保存在 results/mcts 文件夹下。
     :param predictor: SAM 预测器
@@ -141,7 +141,6 @@ def sam_seg_cal_reward(predictor, points, labels, image, ground_truth, image_id)
     iou = calculate_iou(new_mask, ground_truth)
 
     # 保存结果
-    results_dir = get_mcts_path()
     os.makedirs(results_dir, exist_ok=True)
     image_path = os.path.join(results_dir, f'{image_id}_raw.png')
     result_path = os.path.join(results_dir, f'{image_id}_result.png')
@@ -461,19 +460,20 @@ class GameState:
         """
         if self.reward is not None:
             return self.reward
-
-        points = np.array(utils.points + self.all_action_points())
-        labels = np.array(utils.labels + self.all_action_labels())
-        # 使用 SAM 生成新的 mask
-        new_masks, _, _ = utils.predictor.predict(
-            points, labels, multimask_output=False
-        )
-        # 使用 RewardModel 计算 reward
-        mask = torch.Tensor(new_masks[0]).unsqueeze(0).unsqueeze(0).to(device)
-        with torch.no_grad():
-            reward = utils.reward_model(utils.single_image, mask)
-            self.reward = reward.item()
-            return self.reward
+        self.reward = random.uniform(0, 1)
+        return self.reward
+        # points = np.array(utils.points + self.all_action_points())
+        # labels = np.array(utils.labels + self.all_action_labels())
+        # # 使用 SAM 生成新的 mask
+        # new_masks, _, _ = utils.predictor.predict(
+        #     points, labels, multimask_output=False
+        # )
+        # # 使用 RewardModel 计算 reward
+        # mask = torch.Tensor(new_masks[0]).unsqueeze(0).unsqueeze(0).to(device)
+        # with torch.no_grad():
+        #     reward = utils.reward_model(utils.single_image, mask)
+        #     self.reward = reward.item()
+        #     return self.reward
 
 
 class Node:
@@ -630,7 +630,7 @@ def run_mcts(results_dir):
         reward = best_node.state.get_reward()
 
         sam_seg_cal_reward(predictor=predictor, points=points,
-                           labels=labels, image=image.cpu().numpy(), ground_truth=mask[0].cpu().numpy(), image_id=image_id)
+                           labels=labels, image=image.cpu().numpy(), ground_truth=mask[0].cpu().numpy(), image_id=image_id, results_dir=results_dir)
         # 将最佳点和奖励写入文件
 
         result_file_path = os.path.join(
@@ -675,7 +675,9 @@ def calculate_iou_dice(results_dir):
 
 
 def main():
-    result_dir = get_mcts_path()
+    result_dir = os.path.join(
+        get_root_path(), 'result', 'mcts_random', dataset)
+    os.makedirs(result_dir, exist_ok=True)
     run_mcts(results_dir=result_dir)
     calculate_iou_dice(results_dir=result_dir)
     print("Done!")

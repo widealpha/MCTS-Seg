@@ -4,14 +4,15 @@ import os
 import traceback
 
 import numpy as np
-from utils.helpers import load_sam, get_data_path, setup_seed
+from utils.helpers import load_sam, get_data_path, load_sam_adapter, setup_seed
 from tqdm import tqdm
 from PIL import Image
 from segment_anything import SamAutomaticMaskGenerator, SamPredictor
 from helpers import filter_images, extract_image_id
 
 setup_seed()
-sam = load_sam()
+# sam = load_sam()
+sam = load_sam_adapter()
 
 
 def dice(mask1, mask2):

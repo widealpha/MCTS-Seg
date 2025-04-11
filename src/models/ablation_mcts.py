@@ -11,12 +11,12 @@ from PIL import Image, ImageDraw
 from tqdm import tqdm
 from models.model import RewardPredictionModel
 from data.mcts_loader import get_mcts_test_loader
-from utils.helpers import get_checkpoints_path, get_mcts_path, load_sam_adapter, setup_seed, load_sam, device, dataset
+from utils.helpers import get_checkpoints_path, get_mcts_path, setup_seed, load_sam, device, dataset
 setup_seed()
-# sam = load_sam()
-sam = load_sam_adapter()
+sam = load_sam()
 checkpoints_path = get_checkpoints_path()
 utils: Utils = None
+
 
 class Utils:
     def __init__(self, predictor: SamPredictor, reward_model: RewardPredictionModel):
@@ -25,11 +25,11 @@ class Utils:
         self.reward_model = reward_model
         # 设置 MCTS 参数
         # 预测max_points个点
-        self.max_points = 4
+        self.max_points = 1
         # 每次网格划分为K*K块
-        self.grid_size = 4
+        self.grid_size = 16
         # 每次模拟的次数
-        self.num_simulations = 50
+        self.num_simulations = 1000
         # 允许使用背景点
         self.enable_background = False
         self.use_ground_truth = False
@@ -96,7 +96,7 @@ class Utils:
                 self.labels = [1]
 
     def __str__(self):
-        return (f"GlobalInfo(max_points={self.max_points}, grid_size={self.grid_size}, "
+        return (f"Ablation MCTS(max_points={self.max_points}, grid_size={self.grid_size}, "
                 f"num_simulations={self.num_simulations}, enable_background={self.enable_background}, "
                 f"use_ground_truth={self.use_ground_truth}, use_random_ground_truth={self.use_random_ground_truth})")
 
@@ -613,21 +613,44 @@ def run_mcts(results_dir):
         image_id = data['image_id'][0]
 
         utils.set_image(image=image, image_id=image_id, ground_truth=mask)
-        initial_state = GameState()
-        bg_state = GameState(action_history_label=0)
-        root = Node(initial_state)
-        bg_root = Node(bg_state)
+        actions = utils.grid.get_possible_actions([])['children']
 
-        max_points = utils.max_points
-        best_node = root
-        for i in range(max_points):
-            mcts = MCTS(best_node)
-            best_node = mcts.search(iterations=utils.num_simulations)
+        best_rewards = 0
+        best_action = None
+        for action, coord in tqdm(actions, desc=f'{utils.image_id} Action Iteration', position=1, leave=False):
+            # Perform segmentation for each action
+            points = np.array([coord])
+            # Assuming label 1 for foreground
+            labels = np.array([1])
+            new_masks, _, _ = predictor.predict(
+                points, labels, multimask_output=False)
+            with torch.no_grad():
+                reward = utils.reward_model(utils.single_image, torch.Tensor(new_masks[0]).unsqueeze(0).unsqueeze(0).to(device))
+                reward = reward.item()
+            if reward > best_rewards:
+                best_rewards = reward
+                best_action = action
 
-        points = np.array(utils.points + best_node.state.all_action_points())
-        labels = np.array(utils.labels + best_node.state.all_action_labels())
+        # Update utils.points and utils.labels with the best action
+        if best_action is not None:
+            best_coord = utils.grid.get_coordinate(best_action)
+            points = np.array([best_coord])
+            # Assuming label 1 for foreground
+            labels = np.array([1])
 
-        reward = best_node.state.get_reward()
+        # initial_state = GameState()
+        # bg_state = GameState(action_history_label=0)
+        # root = Node(initial_state)
+        # bg_root = Node(bg_state)
+        # max_points = utils.max_points
+        # best_node = root
+        # for i in range(max_points):
+            # mcts = MCTS(best_node)
+            # best_node = mcts.search(iterations=utils.num_simulations)
+        # points = np.array(utils.points + best_node.state.all_action_points())
+        # labels = np.array(utils.labels + best_node.state.all_action_labels())
+
+        # reward = 0.0
 
         sam_seg_cal_reward(predictor=predictor, points=points,
                            labels=labels, image=image.cpu().numpy(), ground_truth=mask[0].cpu().numpy(), image_id=image_id)
@@ -638,7 +661,7 @@ def run_mcts(results_dir):
         with open(result_file_path, 'w') as f:
             f.write(f"Best points: {points.tolist()}\n")
             f.write(f"Best labels: {labels.tolist()}\n")
-            f.write(f"Reward: {reward}\n")
+            f.write(f"Reward: {best_rewards}\n")
 
 
 def calculate_iou_dice(results_dir):
