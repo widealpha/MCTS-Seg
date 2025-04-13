@@ -11,7 +11,7 @@ from PIL import Image, ImageDraw
 from tqdm import tqdm
 from models.model import RewardPredictionModel
 from data.mcts_loader import get_mcts_test_loader
-from utils.helpers import get_checkpoints_path, get_mcts_path, setup_seed, load_sam, device, dataset
+from utils.helpers import get_checkpoints_path, get_mcts_result_path, setup_seed, load_sam, device, dataset
 setup_seed()
 sam = load_sam()
 checkpoints_path = get_checkpoints_path()
@@ -141,7 +141,7 @@ def sam_seg_cal_reward(predictor, points, labels, image, ground_truth, image_id)
     iou = calculate_iou(new_mask, ground_truth)
 
     # 保存结果
-    results_dir = get_mcts_path()
+    results_dir = get_mcts_result_path()
     os.makedirs(results_dir, exist_ok=True)
     image_path = os.path.join(results_dir, f'{image_id}_raw.png')
     result_path = os.path.join(results_dir, f'{image_id}_result.png')
@@ -698,7 +698,7 @@ def calculate_iou_dice(results_dir):
 
 
 def main():
-    result_dir = get_mcts_path()
+    result_dir = get_mcts_result_path()
     run_mcts(results_dir=result_dir)
     calculate_iou_dice(results_dir=result_dir)
     print("Done!")

@@ -3,7 +3,7 @@ import numpy as np
 from PIL import Image
 from segment_anything import SamPredictor
 from tqdm import tqdm
-from utils.helpers import get_data_path, get_mcts_path, get_root_path, load_sam, dataset
+from utils.helpers import get_data_path, get_mcts_result_path, get_root_path, load_sam, dataset
 
 
 def resegment_and_save(image_id, sam_model, input_dir, output_dir, image_dir,  ground_truth_dir, shape=(512, 512)):
@@ -117,7 +117,7 @@ def calculate_average_iou_and_dice(input_dir, ground_truth_dir):
 
 def main():
     sam_model = load_sam()  # 加载 SAM 模型
-    mcts_path = get_mcts_path()
+    mcts_path = get_mcts_result_path()
     data_path = get_data_path()
     input_dir = os.path.join(mcts_path)
     output_dir = res = os.path.join(

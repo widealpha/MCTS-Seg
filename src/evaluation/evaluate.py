@@ -14,7 +14,7 @@ def process_files(baseline_dir):
     
     all_data = []
     for file_name in os.listdir(baseline_dir):
-        if file_name.endswith("_best_score.txt"):
+        if file_name.endswith("_score.txt"):
             baseline_path = os.path.join(baseline_dir, file_name)
 
             # Read IoU values from baseline file
@@ -46,7 +46,7 @@ def calculate_half_data(first_half, second_half, result_dir):
     result_second_metrics = []
 
     for _, file_name in first_half:
-        result_path = os.path.join(result_dir, file_name.replace("_best_score.txt", "_iou.txt"))
+        result_path = os.path.join(result_dir, file_name.replace("_score.txt", "_iou.txt"))
         # Check if the result file exists
         if os.path.exists(result_path):
             with open(result_path, 'r') as f:
@@ -54,7 +54,7 @@ def calculate_half_data(first_half, second_half, result_dir):
                 result_first_metrics.append(calculate_metrics(result_iou))
 
     for _, file_name in second_half:
-        result_path = os.path.join(result_dir, file_name.replace("_best_score.txt", "_iou.txt"))
+        result_path = os.path.join(result_dir, file_name.replace("_score.txt", "_iou.txt"))
         if os.path.exists(result_path):
             with open(result_path, 'r') as f:
                 result_iou = np.array([float(line.strip()) for line in f])

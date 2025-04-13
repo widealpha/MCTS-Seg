@@ -5,20 +5,22 @@ from PIL import Image
 from torch.utils.data import Dataset, DataLoader
 from torchvision.transforms import transforms
 
-from utils.helpers import get_data_path
+from src.utils.helpers import get_data_path
 
 data_path = get_data_path()
 
 
-class MCTSISICDataset(Dataset):
+class MCTSDataset(Dataset):
     def __init__(self, image_dir):
         """
         :param image_dir: 原图像所在目录
         """
         self.image_dir = image_dir
         file_list = os.listdir(image_dir)
-        self.image_ids = [file.split('_raw')[0] for file in file_list if re.match(
-            r'^.+_raw\.jpg$', file)]
+        image_reg = re.compile(r'(.+)_raw\.png$')
+        # 提取所有唯一的原始图像ID（排序后）
+        self.image_ids = [f.split('_raw')[0]
+                          for f in file_list if re.match(image_reg, f)]
         self.image_ids.sort()
         self.transform = transforms.ToTensor()
 
@@ -27,7 +29,7 @@ class MCTSISICDataset(Dataset):
 
     def __getitem__(self, idx):
         image_id = f'{self.image_ids[idx]}'
-        image_path = os.path.join(self.image_dir, f"{image_id}_raw.jpg")
+        image_path = os.path.join(self.image_dir, f"{image_id}_raw.png")
         mask_path = os.path.join(self.image_dir, f"{image_id}_mask_0.png")
 
         try:
@@ -45,8 +47,8 @@ class MCTSISICDataset(Dataset):
 
 
 def get_mcts_test_loader(batch_size=1, shuffle=False):
-    data_dir = os.path.join(data_path, 'processed/test/resized')
-    dataset = MCTSISICDataset(image_dir=data_dir)
+    data_dir = os.path.join(data_path, 'final', 'test')
+    dataset = MCTSDataset(image_dir=data_dir)
     dataloader = DataLoader(
-        dataset, batch_size=batch_size, shuffle=shuffle)
+        dataset, batch_size=batch_size, shuffle=shuffle, num_workers=4, pin_memory=True)
     return dataloader

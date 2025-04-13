@@ -2,8 +2,10 @@ import torch
 from torch import nn
 import torch.nn.functional as F
 
-from resnet import DualInputResNet, ResidualBlock
-from unet_model import UNet
+
+import torchvision
+from .resnet import DualInputResNet, ResidualBlock
+from .unet_model import UNet
 
 
 class RewardPredictionModel(nn.Module):
@@ -11,6 +13,11 @@ class RewardPredictionModel(nn.Module):
         super().__init__(*args, **kwargs)
         # self.resnet = DualInputResNet(
         #     ResidualBlock, [2, 2, 2, 2], sample_width, sample_height)
+        self.encoder = torchvision.models.resnet152(weights='DEFAULT')
+        self.encoder.conv1 = nn.Conv2d(
+            4, 64, kernel_size=7, stride=2, padding=3, bias=False)
+        self.fc = nn.Linear(1000, 1)
+
         self.unet = UNet(n_channels=4, n_classes=1)
         # 定义卷积层和池化层
         self.conv = nn.Conv2d(in_channels=1, out_channels=8,
@@ -22,6 +29,8 @@ class RewardPredictionModel(nn.Module):
         self.fc1 = nn.Linear(
             self._get_conv_output_size((4, sample_width, sample_height)), 16)
         self.fc2 = nn.Linear(16, 1)
+        # self.fc1 = nn.Linear(sample_height * sample_width, 64)
+        # self.fc2 = nn.Linear(64, 1)
 
     def _get_conv_output_size(self, shape):
         with torch.no_grad():
@@ -34,23 +43,24 @@ class RewardPredictionModel(nn.Module):
             return int(torch.prod(torch.tensor(output.size()[1:])))
 
     def forward(self, image, mask):
-        # x = self.resnet(image, mask)
+        x = torch.cat([image, mask], dim=1)  # 拼接成2通道
+        x = self.encoder(x)
+        return self.fc(x) # 输出范围[0,1]
+        # # 将image和mask拼接成 (B, C+1, H, W)
+        # x = torch.cat((image, mask), dim=1)
+        # # 通过UNet网络
+        # x = self.unet(x)  # (B, 1, H, W)
+        # # 通过卷积层和池化层
+        # x = self.conv(x)
+        # x = F.relu(x)
+        # x = self.pool(x)
+        # x = self.conv1(x)
+        # x = F.relu(x)
+        # x = self.pool(x)
+        # # 将特征图展平为一个向量
+        # x = x.view(x.size(0), -1)  # (B, 1*H*W)
+        # # 通过全连接层
+        # x = self.fc1(x)
+        # x = F.relu(x)
+        # x = self.fc2(x)
         # return x
-        # 将image和mask拼接成 (c+1, w, h)
-        x = torch.cat((image, mask), dim=1)
-        # 通过UNet网络
-        x = self.unet(x)
-        # 通过卷积层和池化层
-        x = self.conv(x)
-        x = F.relu(x)
-        x = self.pool(x)
-        x = self.conv1(x)
-        x = F.relu(x)
-        x = self.pool(x)
-        # 将特征图展平为一个向量
-        x = x.view(x.size(0), -1)
-        # 通过全连接层
-        x = self.fc1(x)
-        x = F.relu(x)
-        x = self.fc2(x)
-        return x

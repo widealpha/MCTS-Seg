@@ -4,13 +4,13 @@ import numpy as np
 from PIL import Image
 from tqdm import tqdm
 
-from utils.helpers import get_data_path, get_log_path, get_mcts_path, get_root_path
+from utils.helpers import get_data_path, get_train_log_path, get_mcts_result_path, get_root_path
 from data.helpers import extract_image_id
 
 data_path = get_data_path()
 root_path = get_root_path()
-mcts_path = get_mcts_path()
-log_path = get_log_path()
+mcts_path = get_mcts_result_path()
+log_path = get_train_log_path()
 
 
 def calculate_iou(mask, ground_truth):

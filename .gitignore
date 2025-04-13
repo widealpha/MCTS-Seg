@@ -2,6 +2,8 @@ data/external/
 data/**
 results/**
 result/**
+logs/**
+checkpoints/**
 *.pyc
 *.out
 *.log

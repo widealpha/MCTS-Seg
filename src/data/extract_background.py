@@ -52,7 +52,7 @@ def extract_bg(in_dir, out_dir, ground_truth_dir):
                     if (calculate_iou >= 0.05):
                         print(f"Image {image_file} has non-zero IoU: {calculate_iou}")
                 # 背景的reward理应为0
-                with open(os.path.join(output_folder, f"{image_id}_best_score.txt"), 'w') as f:
+                with open(os.path.join(output_folder, f"{image_id}_score.txt"), 'w') as f:
                     f.write(f"0\n")
         except Exception as e:
             print(f"\nError processing image {image_file}: {e}\n")

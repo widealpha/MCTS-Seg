@@ -5,7 +5,7 @@ from PIL import Image
 from torch.utils.data import Dataset, DataLoader
 from torchvision.transforms import transforms
 
-from utils.helpers import get_data_path
+from src.utils.helpers import get_data_path
 
 data_path = get_data_path()
 
@@ -14,11 +14,11 @@ class ImageDataset(Dataset):
     def __init__(self, image_dir, per_image_mask=None):
         self.image_dir = image_dir
         file_list = os.listdir(image_dir)
+        image_reg = re.compile(r'(.+)_raw\.png$')
         # 提取所有唯一的原始图像ID（排序后）
-        self.image_ids = sorted(list(set(
-            [re.match(r'(.+)_raw\.jpg$', f).group(1)
-             for f in file_list if re.match(r'.+_raw\.jpg$', f)]
-        )))
+        self.image_ids = [f.split('_raw')[0]
+                          for f in file_list if re.match(image_reg, f)]
+        self.image_ids.sort()
 
         if per_image_mask:
             self.per_image_mask = per_image_mask
@@ -49,7 +49,7 @@ class ImageDataset(Dataset):
             mask_counts.add(valid_masks)
 
         if len(mask_counts) != 1:
-            raise ValueError(f"不一致的mask数量，检测到: {mask_counts}")
+            raise ValueError(f"不一致的mask数量, 检测到: {mask_counts}")
 
         return mask_counts.pop()
 
@@ -59,7 +59,7 @@ class ImageDataset(Dataset):
     def __getitem__(self, idx):
         image_id = f'{self.image_ids[idx // self.per_image_mask]}'
         mask_id = f'{image_id}_mask_{idx % self.per_image_mask}'
-        image_path = os.path.join(self.image_dir, f"{image_id}_raw.jpg")
+        image_path = os.path.join(self.image_dir, f"{image_id}_raw.png")
         mask_path = os.path.join(self.image_dir, f"{mask_id}.png")
         reward_path = os.path.join(
             self.image_dir, f"{mask_id}_normalized_reward.txt")
@@ -85,17 +85,19 @@ class ImageDataset(Dataset):
 
 def get_data_loader(batch_size=16, shuffle=True, test_batch_size=16, test_shuffle=False, per_image_mask=None):
     # 路径
-    train_dir = os.path.join(data_path, 'processed/train/resized')
-    test_dir = os.path.join(data_path, 'processed/test/resized')
+    train_dir = os.path.join(data_path, 'final', 'train')
+    test_dir = os.path.join(data_path, 'final', 'test')
 
     # 创建数据集实例
-    train_dataset = ImageDataset(image_dir=train_dir, per_image_mask=per_image_mask)
+    train_dataset = ImageDataset(
+        image_dir=train_dir, per_image_mask=per_image_mask)
     # 测试集只使用ground_truth不使用增强数据集
-    test_dataset = ImageDataset(image_dir=test_dir, per_image_mask=per_image_mask)
+    test_dataset = ImageDataset(
+        image_dir=test_dir, per_image_mask=per_image_mask)
 
     # 创建数据加载器
     train_dataloader = DataLoader(
-        train_dataset, batch_size=batch_size, shuffle=shuffle)
+        train_dataset, batch_size=batch_size, shuffle=shuffle, num_workers=4, pin_memory=True)
     test_dataloader = DataLoader(
-        test_dataset, batch_size=test_batch_size, shuffle=test_shuffle)
+        test_dataset, batch_size=test_batch_size, shuffle=test_shuffle, num_workers=4, pin_memory=True)
     return train_dataloader, test_dataloader

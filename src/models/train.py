@@ -2,20 +2,21 @@ import torch
 import torch.amp
 from tqdm import tqdm
 from datetime import datetime
-from models.model import RewardPredictionModel
-from data.loader import get_data_loader
-from utils.helpers import get_log_writer, device, setup_seed, get_checkpoints_path, dataset
+from src.models.model import RewardPredictionModel
+from src.data.loader import get_data_loader
+from src.utils.helpers import get_log_writer, setup_seed, get_checkpoints_path
+from src.cfg import parse_args
 from torch import nn, optim
 import os
 
+device = parse_args().device
+dataset = parse_args().dataset
 checkpoints_path = get_checkpoints_path()
-
-setup_seed()
 
 
 def train(old_check_point=None):
     print(f"Start Traning Dataset:{dataset} ...")
-    log_writer = get_log_writer()
+    
     train_dataloader, test_dataloader = get_data_loader()
     first_sample = train_dataloader.dataset[0]
     sample_shape = first_sample['image'].shape
@@ -32,11 +33,13 @@ def train(old_check_point=None):
     optimizer = optim.Adam(model.parameters(), lr=lr,
                            weight_decay=weight_decay)
     # 训练循环
-    epochs = 60
+    epochs = 100
+    patience = 10  # 早停的耐心值
     scaler = torch.amp.GradScaler(device)
-    test_loss = 100000
-    best_epoch = 0
-
+    test_loss = float('inf')
+    patience_counter = 0
+    
+    log_writer = get_log_writer()
     for epoch in range(epochs):
         model.train()
         train_loss = 0.0
@@ -58,17 +61,26 @@ def train(old_check_point=None):
             optimizer.zero_grad()
             train_loss += loss.item()
             train_steps += 1
-        log_writer.add_scalar('Loss/train', train_loss / train_steps, epoch)
+        log_writer.add_scalar('Train/Loss', train_loss / train_steps, epoch)
         print(
             f"Epoch [{epoch + 1}/{epochs}], Train Loss:{train_loss / train_steps}")
+        
         # 评估模型在测试集上的表现
         loss, *rest = test(model, test_dataloader, log_writer, epoch)
-        if loss >= test_loss:
-            if best_epoch + 10 < epoch:
-                break
-        else:
+        if loss < test_loss:
             test_loss = loss
-            best_epoch = epoch
+            patience_counter = 0
+            # 保存当前最优模型
+            torch.save(model.state_dict(), os.path.join(
+                checkpoints_path, 'best_model.pth'))
+            print("Best model saved!")
+        else:
+            patience_counter += 1
+            print(f"Early stopping counter: {patience_counter}/{patience}")
+            if patience_counter >= patience:
+                print("Early stopping triggered!")
+                break
+
         if epoch % 5 == 0:
             torch.save(model.state_dict(), os.path.join(
                 checkpoints_path, f'{datetime.now().strftime("%Y-%m-%d_%H-%M-%S")}.pth'))
@@ -93,37 +105,39 @@ def test(model, test_dataloader, log_writer, epoch):
     total_mse = 0.0
     total_mae = 0.0
     total_samples = 0
-    
+
     model.eval()
     with torch.no_grad():
         for batch in tqdm(test_dataloader):
             image = batch['image'].to(device)
             mask = batch['mask'].to(device)
             reward = batch['reward'].float().unsqueeze(1).to(device)
-            
+
             reward_pred = model(image, mask)
-            
+
             # 计算MSE和MAE
             batch_mse = torch.mean((reward_pred - reward) ** 2)
             batch_mae = torch.mean(torch.abs(reward_pred - reward))
-            
+
             total_mse += batch_mse.item() * reward.size(0)
             total_mae += batch_mae.item() * reward.size(0)
             total_samples += reward.size(0)
-    
+
     final_mse = total_mse / total_samples
     final_rmse = final_mse ** 0.5
     final_mae = total_mae / total_samples
-    
+
     if log_writer is not None:
-        log_writer.add_scalar('MSE/test', final_mse, epoch)
-        log_writer.add_scalar('RMSE/test', final_rmse, epoch)
-        log_writer.add_scalar('MAE/test', final_mae, epoch)
-    
-    print(f"Epoch [{epoch + 1}], MSE: {final_mse:.4f}, RMSE: {final_rmse:.4f}, MAE: {final_mae:.4f}")
+        log_writer.add_scalar('Test/MSE', final_mse, epoch)
+        log_writer.add_scalar('Test/RMSE', final_rmse, epoch)
+        log_writer.add_scalar('Test/MAE', final_mae, epoch)
+
+    print(
+        f"Epoch [{epoch + 1}], MSE: {final_mse:.4f}, RMSE: {final_rmse:.4f}, MAE: {final_mae:.4f}")
     return final_mse, final_rmse, final_mae
 
+
 if __name__ == '__main__':
-    old_check_point = os.path.join(
-        checkpoints_path, 'latest.pth')
+    setup_seed()
+    old_check_point = os.path.join(checkpoints_path, 'latest.pth')
     train(old_check_point=None)
