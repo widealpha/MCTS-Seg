@@ -28,7 +28,7 @@ class Utils:
         self.reward_model = reward_model
         # 设置 MCTS 参数
         # 预测max_points个点
-        self.max_points = 4
+        self.max_points = 3
         # 每次网格划分为K*K块
         self.grid_size = 4
         # 每次模拟的次数
@@ -60,6 +60,7 @@ class Utils:
         # 网格划分的最大深度
         self.grid = DynamicGrid(
             n=min(self.width, self.height), m=self.grid_size)
+        
         self.image_id = image_id
         if self.use_ground_truth and ground_truth is not None:
             gt_array = ground_truth[0].cpu().numpy()
@@ -87,7 +88,7 @@ class Utils:
                 self.points = points
                 self.labels = labels
             else:
-                # 计算ground_truth的重心
+                # 计算ground_truth的box中心
                 y_indices, x_indices = np.where(gt_array > 0)
                 if len(y_indices) == 0:
                     print(f"No foreground pixels found in ground truth for image.")
@@ -635,9 +636,7 @@ def run_mcts(results_dir):
 
         utils.set_image(image=image, image_id=image_id, ground_truth=mask)
         initial_state = GameState()
-        bg_state = GameState(action_history_label=0)
         root = Node(initial_state)
-        bg_root = Node(bg_state)
 
         max_points = utils.max_points
         best_node = root

@@ -29,8 +29,6 @@ class RewardPredictionModel(nn.Module):
         self.fc1 = nn.Linear(
             self._get_conv_output_size((4, sample_width, sample_height)), 16)
         self.fc2 = nn.Linear(16, 1)
-        # self.fc1 = nn.Linear(sample_height * sample_width, 64)
-        # self.fc2 = nn.Linear(64, 1)
 
     def _get_conv_output_size(self, shape):
         with torch.no_grad():

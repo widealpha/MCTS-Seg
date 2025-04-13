@@ -1,4 +1,5 @@
 import os
+import numpy as np
 import torch
 from tqdm import tqdm
 
@@ -33,7 +34,7 @@ def train_model(model, dataloader, criterion, optimizer, device):
         masks = batch['mask'].to(device)
         optimizer.zero_grad()
         outputs = model(images)
-        
+
         loss = criterion(outputs, masks)
         loss.backward()
         optimizer.step()
@@ -45,21 +46,20 @@ def train_model(model, dataloader, criterion, optimizer, device):
 
 def test_model(model, dataloader, device):
     model.eval()
-    dice_score = 0.0
-    iou_score = 0.0
     count = 0
+    dices_scores = []
+    iou_scores = []
     with torch.no_grad():
         for batch in tqdm(dataloader, desc="Testing"):
             images = batch['image'].to(device)
             masks = batch['mask'].to(device)
-            outputs = model(images).squeeze(1) # (B, 1, H, W) -> (B, H, W)
+            outputs = model(images).squeeze(1)  # (B, 1, H, W) -> (B, H, W)
             masks = masks.squeeze(1)
             for mask, gt in zip(outputs, masks):
-                dice_score += calculate_dice(mask, gt)
-                iou_score += calculate_iou(mask, gt)
-                count += 1
+                dices_scores.append(calculate_dice(mask, gt))
+                iou_scores.append(calculate_iou(mask, gt))
 
-    return dice_score / count, iou_score / count
+    return np.mean(iou_scores), np.mean(dices_scores), np.std(iou_scores), np.std(dices_scores)
 
 
 def test_unet_baseline():
@@ -92,14 +92,16 @@ def test_unet_baseline():
         train_loss = train_model(
             model, train_dataloader, criterion, optimizer, device)
         print(f"Training Loss: {train_loss:.4f}")
-        dice, iou = test_model(model, test_dataloader, device)
-        print(f"IoU Score: {iou:.4f}")
-        print(f"Dice Score: {dice:.4f}")
+        iou, dice, iou_std, dice_std = test_model(model, test_dataloader, device)
+        print(f"IoU Score: {iou:.4f} ± {iou_std:.4f}")
+        print(f"Dice Score: {dice:.4f} ± {dice_std:.4f}")
 
         # 写入 TensorBoard
         writer.add_scalar("Train/Loss", train_loss, epoch + 1)
         writer.add_scalar("Test/IoU", iou, epoch + 1)
+        writer.add_scalar("Test/IoU_std", iou_std, epoch + 1)
         writer.add_scalar("Test/Dice", dice, epoch + 1)
+        writer.add_scalar("Test/Dice_std", dice_std, epoch + 1)
 
         # 早停机制
         if iou > best_iou:
