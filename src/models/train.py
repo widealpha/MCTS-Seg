@@ -34,7 +34,7 @@ def train(old_check_point=None):
                            weight_decay=weight_decay)
     # 训练循环
     epochs = 100
-    patience = 10  # 早停的耐心值
+    patience = 15  # 早停的耐心值
     scaler = torch.amp.GradScaler(device)
     test_loss = float('inf')
     patience_counter = 0

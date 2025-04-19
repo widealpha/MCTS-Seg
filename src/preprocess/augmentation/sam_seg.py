@@ -10,8 +10,9 @@ from segment_anything import SamPredictor
 from src.preprocess.helpers import filter_images, extract_image_id
 from src.utils.helpers import calculate_dice, load_sam
 
-
-sam = load_sam()
+def get_sam_predictor():
+    sam = load_sam()
+    return SamPredictor(sam)
 
 
 def rewards_function(mask, ground_truth):
@@ -45,7 +46,7 @@ def sam_random_point_mask(fg_point_num, bg_point_num, in_dir, ground_truth_dir, 
     image_files.sort()
     image_files = filter_images(image_files)
 
-    predictor = SamPredictor(sam)
+    predictor = get_sam_predictor()
 
     for image_file in tqdm(image_files, desc="Processing images"):
         image_path = os.path.join(image_folder, image_file)
@@ -135,7 +136,7 @@ def sam_baseline_point_mask(in_dir, ground_truth_dir, out_dir):
     image_files.sort()
     image_files = filter_images(image_files)
 
-    predictor = SamPredictor(sam)
+    predictor = get_sam_predictor()
 
     for image_file in tqdm(image_files, desc="Processing images"):
         image_path = os.path.join(image_folder, image_file)
@@ -218,7 +219,7 @@ def sam_baseline_auto_mask(in_dir, ground_truth_dir, out_dir):
     image_files.sort()
     image_files = filter_images(image_files)
 
-    predictor = SamPredictor(sam)
+    predictor = get_sam_predictor()
 
     for image_file in tqdm(image_files, desc="Processing images"):
         image_path = os.path.join(image_folder, image_file)
@@ -284,7 +285,7 @@ def sam_point_mask(point_number, grid_size, in_dir, ground_truth_dir, out_dir):
     image_files.sort()
     image_files = filter_images(image_files)
 
-    predictor = SamPredictor(sam)
+    predictor = get_sam_predictor()
 
     for image_file in tqdm(image_files, desc="Processing images"):
         image_path = os.path.join(image_folder, image_file)
@@ -381,7 +382,7 @@ def sam_point_mask_all_points(grid_size, in_dir, ground_truth_dir, out_dir):
     image_files.sort()
     image_files = filter_images(image_files)
 
-    predictor = SamPredictor(sam)
+    predictor = get_sam_predictor()
 
     for image_file in tqdm(image_files, desc="Processing images"):
         image_path = os.path.join(image_folder, image_file)

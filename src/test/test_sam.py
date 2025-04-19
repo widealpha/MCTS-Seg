@@ -2,15 +2,17 @@ import sys
 import numpy as np
 import torch
 import matplotlib.pyplot as plt
-import matplotlib
-from segment_anything import SamPredictor, sam_model_registry
-from utils.helpers import load_sam, device
-matplotlib.use('TkAgg')
+from segment_anything import SamPredictor
+from src.utils.helpers import load_sam, get_device, set_chinese_font
+device = get_device()
+set_chinese_font()
 
 # 初始化SAM模型
 
 sam = load_sam()
 predictor = SamPredictor(sam)
+
+
 def main(image_path):
     # 加载图像
     image = plt.imread(image_path)
@@ -24,7 +26,6 @@ def main(image_path):
     elif image.shape[2] == 1:
         # 单通道伪灰度图转RGB
         image = np.concatenate([image] * 3, axis=-1)
-
 
     # 初始化交互界面
     fig, ax = plt.subplots()
@@ -64,6 +65,7 @@ def main(image_path):
     # 绑定点击事件
     fig.canvas.mpl_connect('button_press_event', onclick)
     plt.show()
+
 
 if __name__ == '__main__':
     # 读取args

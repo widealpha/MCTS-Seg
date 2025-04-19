@@ -6,26 +6,26 @@ from PIL import Image
 
 import torch.nn as nn
 import torch.optim as optim
+from torchvision.models.segmentation import deeplabv3_resnet101
 
 from src.data.baseline_dataloader import get_baseline_dataloader
 
 from src.cfg import parse_args
 
-from src.models.unet_model import UNet
-from src.utils.helpers import get_baseline_log_path, get_baseline_result_path, get_log_writer, setup_seed, calculate_dice, calculate_iou
+from src.utils.helpers import get_baseline_log_path, get_baseline_result_path, get_device, get_log_writer, setup_seed, calculate_dice, calculate_iou
 
-model_name = 'unet'
+model_name = 'deeplabv3_resnet101'
 
-class UNetBaselineModel(nn.Module):
-    def __init__(self):
-        super(UNetBaselineModel, self).__init__()
-        self.unet = UNet(n_channels=3, n_classes=1)
-        self.sigmoid = nn.Sigmoid()
+
+class DeeplabBaseline(nn.Module):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.model = deeplabv3_resnet101(weights='DEFAULT')
+        self.model.classifier[4] = nn.Conv2d(256, 1, kernel_size=1)
 
     def forward(self, x):
-        x = self.unet(x)
-        x = self.sigmoid(x)
-        return x
+        x = self.model(x)
+        return torch.sigmoid(x['out'])  # 添加 Sigmoid 激活
 
 
 def train_model(model, dataloader, criterion, optimizer, device):
@@ -36,7 +36,6 @@ def train_model(model, dataloader, criterion, optimizer, device):
         masks = batch['mask'].to(device)
         optimizer.zero_grad()
         outputs = model(images)
-
         loss = criterion(outputs, masks)
         loss.backward()
         optimizer.step()
@@ -79,7 +78,7 @@ def evaluate_model(model, output_dir):
             outputs = model(images).squeeze(1)  # (B, 1, H, W) -> (B, H, W)
             masks = masks.squeeze(1)
             for mask, image_id in zip(outputs, image_ids):
-                 # 将浮点型数据归一化到 [0, 255] 并转换为 uint8
+                # 将浮点型数据归一化到 [0, 255] 并转换为 uint8
                 mask = mask.cpu().numpy() > 0.5
                 mask = mask * 255
                 mask = mask.astype(np.uint8)
@@ -88,7 +87,7 @@ def evaluate_model(model, output_dir):
                     os.path.join(output_dir, f"{image_id}.png"), format='PNG')
 
 
-def train_unet_baseline():
+def train_deeplabv3_baseline():
     dataset = parse_args().dataset
     # Hyperparameters
     epochs = 100
@@ -107,7 +106,7 @@ def train_unet_baseline():
     train_dataloader, test_dataloader = get_baseline_dataloader(
         batch_size=8, test_batch_size=8)
     # Model, loss, optimizer
-    model = UNetBaselineModel().to(device)
+    model = DeeplabBaseline().to(device)
     criterion = nn.BCELoss()
     optimizer = optim.Adam(model.parameters(), lr=lr,
                            weight_decay=weight_decay)
@@ -136,7 +135,7 @@ def train_unet_baseline():
             patience_counter = 0
             # 保存当前最优模型
             torch.save(model.state_dict(), os.path.join(
-                log_path, 'unet_baseline_best.pth'))
+                log_path, f'{model_name}_baseline_best.pth'))
             print("Best model saved!")
         else:
             patience_counter += 1
@@ -157,6 +156,6 @@ def train_unet_baseline():
 
 if __name__ == "__main__":
     setup_seed()
-    model = train_unet_baseline()
+    model = train_deeplabv3_baseline()
     evaluate_model(model=model, output_dir=os.path.join(
         get_baseline_result_path(), f'{model_name}'))

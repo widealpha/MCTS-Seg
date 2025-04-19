@@ -42,9 +42,13 @@ def normalize_rewards(rewards, output_dir, mean_reward=None, std_reward=None):
         mean_reward = np.mean(reward_values)
         std_reward = np.std(reward_values)
 
-    # 对所有 reward 进行归一化并保存
+    # 对所有 reward 进行zscore并保存
     normalized_rewards = [(r - mean_reward) /
                           std_reward for r in reward_values]
+    # min_reward = min(normalized_rewards)
+    # max_reward = max(normalized_rewards)
+    # normalized_rewards = [(r - min_reward) /
+    #                       (max_reward - min_reward) for r in normalized_rewards]
     for (reward, image_id, mask_id), norm_reward in zip(rewards, normalized_rewards):
         norm_reward_path = os.path.join(
             output_dir, f"{image_id}_mask_{mask_id}_normalized_reward.txt")
@@ -193,10 +197,10 @@ def generate_data():
         #     sam_random_point_mask(fg_point_num=(i_dir[0] - 1) // 2 + 1, bg_point_num=i_dir[0] // 2,
         #                           in_dir=raw_image_dir, out_dir=i_dir[1], ground_truth_dir=ground_truth_dir)
 
-        copy_dir(in_dir=ground_truth_dir, out_dir=augmented_dir, index=0)
-        for i_dir in random_point_masks_dir:
-            copy_dir(in_dir=os.path.join(
-                i_dir[1]), out_dir=augmented_dir, index=i_dir[0])
+        # copy_dir(in_dir=ground_truth_dir, out_dir=augmented_dir, index=0)
+        # for i_dir in random_point_masks_dir:
+        #     copy_dir(in_dir=os.path.join(
+        #         i_dir[1]), out_dir=augmented_dir, index=i_dir[0])
 
         args = parse_args()
         image_size = (args.image_size, args.image_size)

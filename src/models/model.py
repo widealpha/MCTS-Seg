@@ -3,7 +3,7 @@ from torch import nn
 import torch.nn.functional as F
 
 
-import torchvision
+from torchvision import models
 from .resnet import DualInputResNet, ResidualBlock
 from .unet_model import UNet
 
@@ -13,7 +13,7 @@ class RewardPredictionModel(nn.Module):
         super().__init__(*args, **kwargs)
         # self.resnet = DualInputResNet(
         #     ResidualBlock, [2, 2, 2, 2], sample_width, sample_height)
-        self.encoder = torchvision.models.resnet152(weights='DEFAULT')
+        self.encoder = models.resnet152(weights='DEFAULT')
         self.encoder.conv1 = nn.Conv2d(
             4, 64, kernel_size=7, stride=2, padding=3, bias=False)
         self.fc = nn.Linear(1000, 1)
@@ -43,7 +43,7 @@ class RewardPredictionModel(nn.Module):
     def forward(self, image, mask):
         x = torch.cat([image, mask], dim=1)  # 拼接成2通道
         x = self.encoder(x)
-        return self.fc(x) # 输出范围[0,1]
+        return self.fc(x)  # 输出范围[0,1]
         # # 将image和mask拼接成 (B, C+1, H, W)
         # x = torch.cat((image, mask), dim=1)
         # # 通过UNet网络

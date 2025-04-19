@@ -1,7 +1,12 @@
+from functools import partial
 import os
+import platform
 import random
 from datetime import datetime
 
+import matplotlib
+from matplotlib import pyplot as plt
+import matplotlib.font_manager as fm
 import numpy as np
 import torch
 from segment_anything import sam_model_registry
@@ -46,14 +51,20 @@ def get_baseline_log_path():
     return res
 
 
+def get_result_path():
+    res = os.path.join(get_root_path(), 'results')
+    os.makedirs(res, exist_ok=True)
+    return res
+
+
 def get_baseline_result_path():
-    res = os.path.join(get_root_path(), 'results', 'baseline', get_dataset())
+    res = os.path.join(get_result_path(), 'baseline', get_dataset())
     os.makedirs(res, exist_ok=True)
     return res
 
 
 def get_mcts_result_path():
-    res = os.path.join(get_root_path(), 'results', 'mcts', get_dataset())
+    res = os.path.join(get_result_path(), 'mcts', get_dataset())
     os.makedirs(res, exist_ok=True)
     return res
 
@@ -85,37 +96,38 @@ def load_sam_vit_h():
     path = os.path.join(
         get_root_path(), 'data/external/sam_vit_h_4b8939.pth')
     sam = sam_model_registry["vit_h"](checkpoint=path)
-    sam.eval()
-    return sam.to(get_device())
+    sam.eval().to(device=get_device())
+    return sam
 
 
 def load_sam_adapter():
     # load the original SAM model
-    net = load_sam_vit_h()
-    net.eval()
-
-    sam_weights = os.path.join(
-        get_root_path(), 'data/external/sam_vit_h_4b8939.pth')    # load the original SAM weight
-    with open(sam_weights, "rb") as f:
-        state_dict = torch.load(f)
-        new_state_dict = {k: v for k, v in state_dict.items(
-        ) if k in net.state_dict() and net.state_dict()[k].shape == v.shape}
-        net.load_state_dict(new_state_dict, strict=False)
+    from src.baseline.msa.sam import sam_model_registry as msa_model_registry
+    net = msa_model_registry['vit_h'](parse_args(), checkpoint=os.path.join(
+        get_root_path(), 'data/external/sam_vit_h_4b8939.pth'))
 
     # load task-specific adapter
-    adapter_path = os.path.join(
-        get_root_path(), 'data/external/Melanoma_Photo_SAM_1024.pth')
-    checkpoint_file = os.path.join(adapter_path)
+    weights_path = os.path.join(
+        get_root_path(),
+        'data/external/msa_isic2016_512_vit_h.pth')
+
+    print(f'=> resuming from {weights_path}')
+    assert os.path.exists(weights_path)
+    checkpoint_file = os.path.join(weights_path)
     assert os.path.exists(checkpoint_file)
-    checkpoint = torch.load(checkpoint_file)
+    loc = 'cuda:0'
+    checkpoint = torch.load(checkpoint_file, map_location=loc)
+    start_epoch = checkpoint['epoch']
+    best_tol = checkpoint['best_tol']
 
-    state_dict = checkpoint['state_dict']
-    new_state_dict = state_dict
-    net.load_state_dict(new_state_dict, strict=False)
-    return net
+    net.load_state_dict(checkpoint['state_dict'], strict=False)
+    # optimizer.load_state_dict(checkpoint['optimizer'], strict=False)
+
+    print(f'=> loaded checkpoint {checkpoint_file} (epoch {start_epoch})')
+    return net.eval().to(get_device())
 
 
-def calculate_iou(pred_mask, true_mask):
+def calculate_iou(pred_mask, true_mask, threshold=0.5):
     if isinstance(pred_mask, torch.Tensor):
         pred_mask = pred_mask.cpu().numpy()
     if isinstance(true_mask, torch.Tensor):
@@ -124,15 +136,15 @@ def calculate_iou(pred_mask, true_mask):
         f"Shape mismatch: pred_mask.shape={pred_mask.shape}, true_mask.shape={true_mask.shape}"
 
     # 确保掩码是布尔类型
-    pred_mask = pred_mask > 0.5
-    true_mask = true_mask > 0.5
+    pred_mask = pred_mask > threshold
+    true_mask = true_mask > threshold
 
     intersection = np.logical_and(pred_mask, true_mask).sum()
     union = np.logical_or(pred_mask, true_mask).sum()
     return intersection / union if union != 0 else 0.0
 
 
-def calculate_dice(pred_mask, true_mask):
+def calculate_dice(pred_mask, true_mask, threshold=0.5):
     if isinstance(pred_mask, torch.Tensor):
         pred_mask = pred_mask.cpu().numpy()
     if isinstance(true_mask, torch.Tensor):
@@ -141,9 +153,34 @@ def calculate_dice(pred_mask, true_mask):
         f"Shape mismatch: pred_mask.shape={pred_mask.shape}, true_mask.shape={true_mask.shape}"
 
     # 确保掩码是布尔类型
-    pred_mask = pred_mask > 0.5
-    true_mask = true_mask > 0.5
+    pred_mask = pred_mask > threshold
+    true_mask = true_mask > threshold
 
     intersection = np.logical_and(pred_mask, true_mask).sum()
     total = pred_mask.sum() + true_mask.sum()
     return (2 * intersection) / total if total != 0 else 0.0
+
+
+def set_chinese_font():
+    matplotlib.use('TkAgg')
+
+    # 常见中文字体按平台列出
+    font_candidates = {
+        'Windows': ['Microsoft YaHei', 'SimHei'],
+        'Darwin': ['PingFang SC', 'Heiti SC'],
+        'Linux': ['Noto Sans CJK SC', 'WenQuanYi Zen Hei', 'AR PL UKai CN']
+    }
+
+    system = platform.system()
+    fonts_available = set(f.name for f in fm.fontManager.ttflist)
+    print(f"当前系统：{system}")
+    print(f"系统中检测到的字体数量：{len(fonts_available)}")
+
+    for font in font_candidates.get(system, []):
+        if font in fonts_available:
+            plt.rcParams['font.sans-serif'] = [font]
+            plt.rcParams['axes.unicode_minus'] = False
+            print(f"✅ 已设置 matplotlib 中文字体为：{font}")
+            return
+
+    print("⚠️ 未找到常用中文字体，请考虑手动安装（如 Noto Sans CJK 或 SimHei）")
