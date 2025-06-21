@@ -63,8 +63,15 @@ def get_baseline_result_path():
     return res
 
 
-def get_mcts_result_path():
-    res = os.path.join(get_result_path(), 'mcts', get_dataset())
+def get_mcts_result_path(suffix=None):
+    res = os.path.join(get_result_path(), 'mcts',
+                       f'{get_dataset()}', )
+    os.makedirs(res, exist_ok=True)
+    return res
+
+
+def get_ablation_result_path():
+    res = os.path.join(get_result_path(), 'ablation', get_dataset())
     os.makedirs(res, exist_ok=True)
     return res
 
@@ -105,11 +112,15 @@ def load_sam_adapter():
     from src.baseline.msa.sam import sam_model_registry as msa_model_registry
     net = msa_model_registry['vit_h'](parse_args(), checkpoint=os.path.join(
         get_root_path(), 'data/external/sam_vit_h_4b8939.pth'))
-
+    dataset = get_dataset()
+    if dataset == 'ISIC2018':
+        weight_name = 'msa_isic2018_512_vit_h.pth'
+    elif dataset == 'ISIC2016':
+        weight_name = 'msa_isic2016_512_vit_h.pth'
     # load task-specific adapter
     weights_path = os.path.join(
         get_root_path(),
-        'data/external/msa_isic2016_512_vit_h.pth')
+        f'data/external/{weight_name}')
 
     print(f'=> resuming from {weights_path}')
     assert os.path.exists(weights_path)
@@ -126,6 +137,24 @@ def load_sam_adapter():
     print(f'=> loaded checkpoint {checkpoint_file} (epoch {start_epoch})')
     return net.eval().to(get_device())
 
+
+def load_medsam():
+    dataset = get_dataset()
+    if dataset == 'ISIC2018':
+        weight_name = 'medsam_isic2018_1014_vit_b.pth'
+    elif dataset == 'ISIC2016':
+        weight_name = 'medsam_isic2016_1024_vit_b.pth'
+    # load task-specific adapter
+    weights_path = os.path.join(
+        get_root_path(),
+        f'data/external/{weight_name}')
+    path = os.path.join(
+        get_root_path(), 'src/baseline/MedSAM/work_dir/MedSAM/medsam_vit_b.pth')
+    torch.save(torch.load(path, map_location='cpu')['model'], weights_path)
+
+    sam = sam_model_registry["vit_b"](checkpoint=weights_path)
+    sam.eval().to(device=get_device())
+    return sam
 
 def calculate_iou(pred_mask, true_mask, threshold=0.5):
     if isinstance(pred_mask, torch.Tensor):

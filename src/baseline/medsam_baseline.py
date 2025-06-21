@@ -15,9 +15,9 @@ from src.cfg import parse_args
 
 from src.models.msa_predictor import MSAPredictor
 from src.models.unet_model import UNet
-from src.utils.helpers import get_baseline_log_path, get_baseline_result_path, get_log_writer, load_sam_adapter, setup_seed, calculate_dice, calculate_iou
+from src.utils.helpers import get_baseline_log_path, get_baseline_result_path, get_log_writer, load_medsam, load_sam_adapter, setup_seed, calculate_dice, calculate_iou
 
-model_name = 'medical_sam_adapter'
+model_name = 'medsam'
 
 
 def train_model(model, dataloader, criterion, optimizer, device):
@@ -63,7 +63,6 @@ def get_predictor(model):
 def gengerate_prompt(masks: torch.tensor, point_type, point_num: int = 1, device='cuda'):
     batch_coords = []
     batch_labels = []
-    batch_boxes = []
     batch_size = masks.shape[0]
 
     for b in range(batch_size):
@@ -77,8 +76,6 @@ def gengerate_prompt(masks: torch.tensor, point_type, point_num: int = 1, device
                 center_x = int((np.min(x_indices) + np.max(x_indices)) / 2)
                 point_coords = np.array([[center_x, center_y]])
                 point_labels = np.array([1])
-                batch_coords.append(point_coords)
-                batch_labels.append(point_labels)
             else:
                 point_coords = None
                 point_labels = None
@@ -90,8 +87,6 @@ def gengerate_prompt(masks: torch.tensor, point_type, point_num: int = 1, device
                 point_coords = np.array(
                     [[x_indices[i], y_indices[i]] for i in random_indices])
                 point_labels = np.array([1] * point_num)
-                batch_coords.append(point_coords)
-                batch_labels.append(point_labels)
             else:
                 point_coords = None
                 point_labels = None
@@ -102,26 +97,16 @@ def gengerate_prompt(masks: torch.tensor, point_type, point_num: int = 1, device
                 centroid_x = int(np.mean(x_indices))
                 point_coords = np.array([[centroid_x, centroid_y]])
                 point_labels = np.array([1])
-                batch_coords.append(point_coords)
-                batch_labels.append(point_labels)
             else:
                 point_coords = None
                 point_labels = None
-        elif point_type == 'box':
-            y_indices, x_indices = np.where(gt > 0)
-            if len(y_indices) > 0 and len(x_indices) > 0:
-                min_y, max_y = np.min(y_indices), np.max(y_indices)
-                min_x, max_x = np.min(x_indices), np.max(x_indices)
-                batch_boxes.append([min_x, min_y, max_x, max_y])
-    
-    if point_type in ['center', 'random', 'centroid']:
-        return torch.tensor(batch_coords).to(device), torch.tensor(batch_labels).to(device), None
-    elif point_type == 'box':
-        return None, None, torch.tensor(batch_boxes).to(device)
-    # batch_coords = torch.tensor(batch_coords)  # Shape: (B, N, 2)
-    # batch_labels = torch.tensor(batch_labels)  # Shape: (B, N)
-    # batch_boxes = torch.tensor(batch_boxes)
-    # return batch_coords.to(device), batch_labels.to(device), batch_boxes.to(device)
+
+        batch_coords.append(point_coords)
+        batch_labels.append(point_labels)
+
+    batch_coords = torch.tensor(batch_coords)  # Shape: (B, N, 2)
+    batch_labels = torch.tensor(batch_labels)  # Shape: (B, N)
+    return batch_coords.to(device), batch_labels.to(device)
 
 
 def evaluate_model(model, output_dir, point_type, point_num):
@@ -139,15 +124,16 @@ def evaluate_model(model, output_dir, point_type, point_num):
         for batch in tqdm(test_dataloader, desc="Evaluating"):
             images = batch['image'].to(device)
             masks = batch['mask'].to(device)
-            sam_predictor.set_torch_image(images)
+            sam_predictor.set_torch_image(images, original_image_size=images.shape[2:])
             if point_type == 'none':
                 coords = None
                 labels = None
             else:
-                coords, labels, boxes = gengerate_prompt(
+                coords, labels = gengerate_prompt(
                     masks, point_type=point_type, point_num=point_num, device=device)
-            pred, *_ = sam_predictor.predict_torch(coords, labels, boxes)
-            for mask, gt, image_id in zip(pred, masks, batch['image_id']):
+                
+            pred, *_ = sam_predictor.predict_torch(coords, labels, multimask_output=False)
+            for mask, gt, image_id, coord, label in zip(pred, masks, batch['image_id'], coords, labels):
                 mask = mask.cpu().numpy().squeeze()
                 gt = gt.cpu().numpy().squeeze()
                 iou.append(calculate_iou(mask, gt))
@@ -159,8 +145,8 @@ def evaluate_model(model, output_dir, point_type, point_num):
                 Image.fromarray(mask).save(
                     os.path.join(output_dir, f"{image_id}.png"), format='PNG')
                 with open(os.path.join(output_dir, f"{image_id}.txt"), "w") as f:
-                    # f.write(f"Coordinates: {coord.tolist()}\n")
-                    # f.write(f"Labels: {label.tolist()}\n")
+                    f.write(f"Coordinates: {coord.tolist()}\n")
+                    f.write(f"Labels: {label.tolist()}\n")
                     f.write(f"IOU: {iou[-1]:.4f}\n")
                     f.write(f"DICE: {dice[-1]:.4f}\n")
     with open(os.path.join(output_dir, "evaluation_metrics.txt"), "w") as f:
@@ -176,7 +162,7 @@ def evaluate_model(model, output_dir, point_type, point_num):
 
 
 def test_msa_baseline():
-    model = load_sam_adapter()
+    model = load_medsam()
     return model
 
 

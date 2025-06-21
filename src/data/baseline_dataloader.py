@@ -5,6 +5,7 @@ from PIL import Image
 from torch.utils.data import Dataset, DataLoader
 from torchvision.transforms import transforms
 
+from src.cfg import parse_args
 from src.utils.helpers import get_data_path
 
 data_path = get_data_path()
@@ -31,8 +32,9 @@ class ImageDataset(Dataset):
         mask_path = os.path.join(self.mask_dir, f"{image_id}.png")
 
         try:
-            image = self.transform(Image.open(image_path))
-            mask = self.transform(Image.open(mask_path))
+            image_size = parse_args().image_size
+            image = self.transform(Image.open(image_path).resize((image_size, image_size)))
+            mask = self.transform(Image.open(mask_path).resize((image_size, image_size)))
         except Exception as e:
             print(f"Error loading data for {image_id}: {e}")
             return None

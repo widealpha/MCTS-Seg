@@ -1,4 +1,5 @@
 from __future__ import annotations
+from datetime import datetime
 import math
 import os
 import random
@@ -8,8 +9,10 @@ from segment_anything import SamPredictor
 import torch
 from PIL import Image, ImageDraw
 from tqdm import tqdm
+from src.cfg import parse_args
 from src.models.model import RewardPredictionModel
 from src.data.mcts_loader import get_mcts_test_loader
+from src.models.msa_predictor import MSAPredictor
 from src.utils.helpers import calculate_dice, calculate_iou, get_checkpoints_path, get_mcts_result_path, load_sam_adapter, setup_seed, load_sam, get_dataset, get_device
 import csv
 
@@ -20,15 +23,20 @@ utils: Utils = None
 device = get_device()
 dataset = get_dataset()
 
+
 def get_sam_predictor():
     """
     获取 SAM 预测器
     """
-    sam = load_sam()
-    sam_predictor = SamPredictor(sam)
-    # sam = load_sam_adapter()
-    # sam_predictor = MSAPredictor(sam)
+    args = parse_args()
+    if args.bone == 'sam':
+        sam = load_sam()
+        sam_predictor = SamPredictor(sam)
+    elif args.bone == 'msa':
+        sam = load_sam_adapter()
+        sam_predictor = MSAPredictor(sam)
     return sam_predictor
+
 
 class RewardCache:
     def __init__(self):
@@ -50,6 +58,7 @@ class RewardCache:
         """
         设置缓存中的奖励值。
         """
+
         self.cache[self._key(actions)] = reward
 
     def clear_cache(self):
@@ -68,17 +77,18 @@ class Utils:
         # 预测max_points个点
         self.max_points = 2
         # 每次网格划分为K*K块
-        self.grid_size = 4
+        self.grid_size = 8
         # 网格划分的深度信息
         self.max_depth = None
         # 每次模拟的次数
-        self.num_simulations = 32 * self.grid_size * self.grid_size
+        self.num_simulations = 8 * self.grid_size * self.grid_size
         # 模拟时候选定的随机点数量
-        self.simulation_actions = self.grid_size * self.grid_size // 16
+        self.simulation_actions = 1
         # 允许使用背景点
         self.enable_background = False
         self.use_ground_truth = False
         self.use_random_ground_truth = False
+        self.float_reward = True
         self.points = []
         self.labels = []
         self.cache = RewardCache()
@@ -102,7 +112,7 @@ class Utils:
         self.grid = DynamicGrid(
             n=min(self.width, self.height), m=self.grid_size)
         self.max_depth = math.ceil(
-            math.log(min(self.width, self.height), self.grid_size)) - 1
+            math.log(min(self.width, self.height), self.grid_size))
         # raw = math.log(min(self.width, self.height), self.grid_size)
         # self.max_depth = math.ceil(raw) - (1 if raw == int(raw) else 2)
 
@@ -146,22 +156,38 @@ class Utils:
                 self.points = [[center_x, center_y]]
                 self.labels = [1]
 
+
+    def hyper_param_str(self):
+        """
+        返回当前 MCTS 的超参数设置字符串。
+        """
+        return (
+            f"m{self.max_points}"
+            f"g{self.grid_size}"
+            f"s{self.num_simulations}"
+            f"a{self.simulation_actions}"
+            f"bg{1 if self.enable_background else 0}"
+            f"t{1 if self.use_ground_truth else 0}"
+            f"rt{1 if self.use_random_ground_truth else 0}"
+            f"f{1 if self.float_reward else 0}"
+        )
     def __str__(self):
         return (
             f"""GlobalInfo(
     max_points           = {self.max_points},
     grid_size            = {self.grid_size},
     num_simulations      = {self.num_simulations},
+    simulation_actions   = {self.simulation_actions},
     enable_background    = {self.enable_background},
     use_ground_truth     = {self.use_ground_truth},
     random_ground_truth  = {self.use_random_ground_truth}
+    float_reward         = {self.float_reward},
 )""")
 
 
 def load_model(model_name, sample_width, sample_height):
     model_path = os.path.join(checkpoints_path, model_name)
-    model = RewardPredictionModel(
-        sample_width=sample_width, sample_height=sample_height).to(device)
+    model = RewardPredictionModel().to(device)
     model.load_state_dict(torch.load(model_path, weights_only=True))
     model.eval()
     return model
@@ -181,31 +207,33 @@ def predict(predictor, reward_model, points: np.array, labels: np.array, image: 
         return mask.to(device), rewards.to(device)  # (B, 1, H, W)
 
 
-def sam_seg_cal_reward(points, labels, image, ground_truth, image_id):
+def sam_seg_cal_reward(predictor, reward_model, points, labels, image, ground_truth, image_id, output_dir):
     """
     使用 SAM 进行分割，结合 ground truth 计算 reward，reward 直接使用 IOU，结果保存在 results/mcts 文件夹下。
     :param predictor: SAM 预测器
     :param points: 分割点
     :param labels: 分割标签
-    :param image: 输入图像(C, H, W)
-    :param ground_truth: ground truth 掩码(H, W)
+    :param image: 输入图像 tensor(C, H, W)
+    :param ground_truth: ground truth 掩码 tensor(1, H, W)
     :param image_id: 图像 ID
     """
     # 使用 SAM 生成新的 mask
     with torch.no_grad():
-        masks, rewards = predict(predictor=utils.predictor,
-                                 reward_model=utils.reward_model,
+        masks, rewards = predict(predictor=predictor,
+                                 reward_model=reward_model,
                                  points=points, labels=labels,
-                                 image=utils.single_image)
+                                 image=image.unsqueeze(0))
         reward = rewards.item()
-        new_mask = masks[0].squeeze(0).cpu().numpy()
-
+        new_mask = masks[0]
+    image_array = image.cpu().numpy()
+    mask_array = new_mask[0].cpu().numpy()
+    gt_array = ground_truth[0].cpu().numpy()
     # 计算 IOU 和Dice
-    iou = calculate_iou(new_mask, ground_truth)
-    dice = calculate_dice(new_mask, ground_truth)
+    iou = calculate_iou(mask_array, gt_array)
+    dice = calculate_dice(mask_array, gt_array)
 
     # 保存结果
-    results_dir = get_mcts_result_path()
+    results_dir = output_dir
     os.makedirs(results_dir, exist_ok=True)
     image_path = os.path.join(results_dir, f'{image_id}_raw.png')
     result_path = os.path.join(results_dir, f'{image_id}_result.png')
@@ -214,9 +242,9 @@ def sam_seg_cal_reward(points, labels, image, ground_truth, image_id):
     # reward_path = os.path.join(results_dir, f'{image_id}_reward.txt')
 
     # 保存分割结果和 mask
-    raw_image = (image * 255).astype(np.uint8).transpose(1, 2, 0)
-    new_mask_image = (new_mask * 255).astype(np.uint8)
-    ground_truth_image = (ground_truth * 255).astype(np.uint8)
+    raw_image = (image_array * 255).astype(np.uint8).transpose(1, 2, 0)
+    new_mask_image = (mask_array * 255).astype(np.uint8)
+    ground_truth_image = (gt_array * 255).astype(np.uint8)
     combined_image = np.concatenate(
         (new_mask_image, ground_truth_image), axis=1)
     Image.fromarray(raw_image).save(image_path)
@@ -548,10 +576,10 @@ class GameState:
         # 使用 SAM 生成新的 mask
         with torch.no_grad():
             _, rewards = predict(predictor=utils.predictor,
-                                     reward_model=utils.reward_model,
-                                     points=points,
-                                     labels=labels,
-                                     image=utils.single_image)
+                                 reward_model=utils.reward_model,
+                                 points=points,
+                                 labels=labels,
+                                 image=utils.single_image)
             # 使用 RewardModel 计算 reward
             reward = rewards.item()
             utils.cache.set_reward_cache(cache_key, reward)
@@ -629,15 +657,31 @@ class MCTS:
         """
         模拟阶段：从给定状态开始随机模拟直到终局，并返回模拟的奖励值。
         """
-        current_state = state
-        while not current_state.is_terminal():
-            possible_moves = current_state.get_possible_children_moves()
-            if not possible_moves:
-                break
-            move = random.sample(possible_moves, max(
-                                 min(utils.simulation_actions, len(possible_moves) // 4), 1))
-            current_state = current_state.apply_moves(move)
-        return current_state.get_reward()
+        # current_state = state
+        # while not current_state.is_terminal():
+        #     possible_moves = current_state.get_possible_children_moves()
+        #     if not possible_moves:
+        #         break
+        #     move = random.sample(possible_moves, max(
+        #                          min(utils.simulation_actions, len(possible_moves) // 4), 1))
+        #     current_state = current_state.apply_moves(move)
+        # return current_state.get_reward()
+        rewards = []
+        for i in range(utils.simulation_actions):
+            current_state = state
+            while not current_state.is_terminal():
+                possible_moves = current_state.get_possible_children_moves()
+                if not possible_moves:
+                    break
+                move = [random.choice(possible_moves)]
+                current_state = current_state.apply_moves(move)
+            rewards.append(current_state.get_reward())
+        # 计算平均奖励
+        if len(rewards) > 0:
+            reward = sum(rewards) / len(rewards)
+        else:
+            reward = 0.0
+        return reward if utils.float_reward else int(reward > 0.5)
 
     def backup(self, node: Node, reward: float) -> None:
         """
@@ -683,7 +727,7 @@ def run_mcts(results_dir):
     # 初始化 SAM和RewardModel
     predictor = get_sam_predictor()
     reward_model = load_model(
-        model_name='best_model.pth', sample_width=sample_width, sample_height=sample_height)
+        model_name='latest.pth', sample_width=sample_width, sample_height=sample_height)
     global utils
     utils = Utils(predictor=predictor, reward_model=reward_model)
 
@@ -721,8 +765,12 @@ def run_mcts(results_dir):
 
         reward = best_node.state.get_reward()
 
-        iou, dice, reward = sam_seg_cal_reward(points=points, labels=labels,
-                                               image=image.cpu().numpy(), ground_truth=mask[0].cpu().numpy(), image_id=image_id)
+        iou, dice, reward = sam_seg_cal_reward(
+            predictor=predictor, reward_model=reward_model,
+            points=points, labels=labels,
+            image=image, ground_truth=mask, image_id=image_id,
+            output_dir=results_dir
+        )
         # 将最佳点和奖励写入文件
         result_file_path = os.path.join(
             results_dir, f'{image_id}_result.txt')
@@ -793,12 +841,23 @@ def calculate_iou_dice(results_dir):
         f"Mean Dice: {mean_dice}, Variance Dice: {var_dice}, Std Dice: {std_dice}")
     print(
         f"Mean Reward: {mean_reward}, Variance Reward: {var_reward}, Std Reward: {std_reward}")
+    
 
+def get_result_path():
+    """
+    获取 MCTS 结果保存路径。
+    根据当前时间戳创建一个新的目录，格式为 'results/mcts/年-月-日_时-分-秒'。
+    """
+    current_time = datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
+    result_dir = os.path.join(get_mcts_result_path(), Utils(None, None).hyper_param_str(), current_time)
+    if not os.path.exists(result_dir):
+        os.makedirs(result_dir)
+    return result_dir
 
 def main():
-    result_dir = get_mcts_result_path()
-    run_mcts(results_dir=result_dir)
-    calculate_iou_dice(results_dir=result_dir)
+    result_path = get_result_path()
+    run_mcts(results_dir=result_path)
+    calculate_iou_dice(results_dir=result_path)
     print("Done!")
 
 

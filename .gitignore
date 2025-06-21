@@ -7,3 +7,6 @@ checkpoints/**
 *.pyc
 *.out
 *.log
+*.pyc
+
+src/baseline/model/**

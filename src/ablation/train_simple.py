@@ -2,7 +2,7 @@ import torch
 import torch.amp
 from tqdm import tqdm
 from datetime import datetime
-from src.models.model import RewardPredictionModel
+from src.models.model import RewardPredictionModel, SimpleRewardModel
 from src.data.loader import get_data_loader
 from src.utils.helpers import get_log_writer, setup_seed, get_checkpoints_path
 from src.cfg import parse_args
@@ -11,8 +11,11 @@ import os
 
 device = parse_args().device
 dataset = parse_args().dataset
-checkpoints_path = os.path.join(get_checkpoints_path(), datetime.now().strftime("%Y-%m-%d_%H-%M-%S"))
-os.makedirs(checkpoints_path, exist_ok=True)
+checkpoints_path = os.path.join(get_checkpoints_path(), 'simple')
+
+if not os.path.exists(checkpoints_path):
+    os.makedirs(checkpoints_path, exist_ok=True)
+
 
 def train(old_check_point=None):
     print(f"Start Traning Dataset:{dataset} ...")
@@ -21,10 +24,10 @@ def train(old_check_point=None):
     first_sample = train_dataloader.dataset[0]
     sample_shape = first_sample['image'].shape
     sample_width, sample_height = sample_shape[1], sample_shape[2]
-    lr = 1e-5
+    lr = 1e-3
     weight_decay = 1e-4
     # 初始化模型、损失函数和优化器
-    model = RewardPredictionModel().to(device)
+    model = SimpleRewardModel().to(device)
     if old_check_point:
         model.load_state_dict(torch.load(old_check_point))
         print(f"Loaded model from {old_check_point}")
@@ -33,7 +36,7 @@ def train(old_check_point=None):
                            weight_decay=weight_decay)
     # 训练循环
     epochs = 100
-    patience = 100  # 早停的耐心值
+    patience = 15  # 早停的耐心值
     scaler = torch.amp.GradScaler(device)
     test_loss = float('inf')
     patience_counter = 0
@@ -65,13 +68,13 @@ def train(old_check_point=None):
             f"Epoch [{epoch + 1}/{epochs}], Train Loss:{train_loss / train_steps}")
         
         # 评估模型在测试集上的表现
-        loss, *rest = test(model, test_dataloader, log_writer, epoch)
+        loss, *_ = test(model, test_dataloader, log_writer, epoch)
         if loss < test_loss:
             test_loss = loss
             patience_counter = 0
             # 保存当前最优模型
             torch.save(model.state_dict(), os.path.join(
-                checkpoints_path, f'best_model_{epoch}.pth'))
+                checkpoints_path, 'best_model.pth'))
             print("Best model saved!")
         else:
             patience_counter += 1
