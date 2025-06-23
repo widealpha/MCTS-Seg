@@ -2,6 +2,7 @@ import os
 import shutil
 
 import numpy as np
+import torch
 from tqdm import tqdm
 from PIL import Image
 
@@ -13,8 +14,7 @@ from sam_seg import sam_baseline_auto_mask, sam_baseline_point_mask, sam_point_m
 
 def rewards_function(mask, ground_truth):
     """
-    计算 mask 和 ground_truth 之间的 IOU，并根据散点数量降低奖励。
-    然后将品质按照不同区间划分成 12 档，将奖励映射到 0-11 之间。
+    计算奖励值，这里使用 Dice 系数作为奖励。
     :param mask: 预测的 mask
     :param ground_truth: ground truth mask
     :return: 调整后的奖励值
@@ -180,9 +180,16 @@ def generate_data():
 
         raw_image_dir = os.path.join(raw_path, data_type, 'image')
         ground_truth_dir = os.path.join(raw_path, data_type, 'gt')
+        random_point_masks_dir = []
+        point_configs = [
+            # mask配置，第一个是前景点数量，第二个是背景点数量
+            [0, 0], [10, 0], [0, 10], [10, 10]
+        ]
+        for (index, point_config) in enumerate(point_configs):
+            out_dir = os.path.join(
+                processed_path, data_type, f'random_point_masks_{index}')
+            random_point_masks_dir.append((point_config, out_dir, index))
 
-        random_point_masks_dir = [(i, os.path.join(
-            processed_path, data_type, f'random_point_masks_{i}')) for i in range(1, 4)]
         # 对point_masks_dir中最佳数据取最大联通分量mask的目录
         center_point_masks_dir = os.path.join(
             processed_path, data_type, 'center')
@@ -193,14 +200,20 @@ def generate_data():
 
         print(f"Generating data for {data_type} set")
 
-        # for i_dir in random_point_masks_dir:
-        #     sam_random_point_mask(fg_point_num=(i_dir[0] - 1) // 2 + 1, bg_point_num=i_dir[0] // 2,
-        #                           in_dir=raw_image_dir, out_dir=i_dir[1], ground_truth_dir=ground_truth_dir)
+        for i_dir in random_point_masks_dir:
+            config = i_dir[0]
+            fg_point_num = config[0]
+            bg_point_num = config[1]
+            out_dir = i_dir[1]
+            sam_random_point_mask(fg_point_num=fg_point_num, bg_point_num=bg_point_num,
+                                      in_dir=raw_image_dir, out_dir=out_dir, ground_truth_dir=ground_truth_dir)
+            # sam_random_point_mask(fg_point_num=(i_dir[0] - 1) // 2 + 1, bg_point_num=i_dir[0] // 2,
+            #                       in_dir=raw_image_dir, out_dir=i_dir[1], ground_truth_dir=ground_truth_dir)
 
-        # copy_dir(in_dir=ground_truth_dir, out_dir=augmented_dir, index=0)
-        # for i_dir in random_point_masks_dir:
-        #     copy_dir(in_dir=os.path.join(
-        #         i_dir[1]), out_dir=augmented_dir, index=i_dir[0])
+        copy_dir(in_dir=ground_truth_dir, out_dir=augmented_dir, index=0)
+        for i_dir in random_point_masks_dir:
+            copy_dir(in_dir=os.path.join(
+                i_dir[1]), out_dir=augmented_dir, index=i_dir[2])
 
         args = parse_args()
         image_size = (args.image_size, args.image_size)

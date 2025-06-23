@@ -143,6 +143,7 @@ def evaluate_model(model, output_dir, point_type, point_num):
             if point_type == 'none':
                 coords = None
                 labels = None
+                boxes = None
             else:
                 coords, labels, boxes = gengerate_prompt(
                     masks, point_type=point_type, point_num=point_num, device=device)

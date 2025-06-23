@@ -24,4 +24,6 @@ def parse_args():
                         choices=['none', 'center', 'random', 'centroid', 'box'], help='point type: center, random')
     parser.add_argument('-point_num', type=int, default=1,
                         help='number of points for segmentation')
+    parser.add_argument('-msa_ckpt', type=str, default=None,
+                        help='Path to the MSA checkpoint file')
     return parser.parse_args()

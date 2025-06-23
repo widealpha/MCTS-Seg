@@ -4,15 +4,20 @@ import os
 import traceback
 
 import numpy as np
+import torch
 from tqdm import tqdm
 from PIL import Image
 from segment_anything import SamPredictor
+from src.cfg import parse_args
+from src.models.msa_predictor import MSAPredictor
 from src.preprocess.helpers import filter_images, extract_image_id
-from src.utils.helpers import calculate_dice, load_sam
+from src.utils.helpers import calculate_dice, load_sam, load_sam_adapter
 
 def get_sam_predictor():
-    sam = load_sam()
-    return SamPredictor(sam)
+    # sam = load_sam()
+    # return SamPredictor(sam)
+    sam = load_sam_adapter()
+    return MSAPredictor(sam)
 
 
 def rewards_function(mask, ground_truth):
@@ -62,7 +67,6 @@ def sam_random_point_mask(fg_point_num, bg_point_num, in_dir, ground_truth_dir, 
 
         try:
             with Image.open(image_path) as img, Image.open(ground_truth_path) as gt:
-                img = img.convert('RGB')
                 img_array = np.array(img, dtype=np.uint8)
                 gt_array = np.array(gt.convert('L'), dtype=np.uint8)
 
@@ -88,11 +92,13 @@ def sam_random_point_mask(fg_point_num, bg_point_num, in_dir, ground_truth_dir, 
                         points.append([x_indices_1[idx], y_indices_1[idx]])
                         labels.append(1)
 
-                points = np.array(points)
-                labels = np.array(labels)
+                points = np.array(points) if len(points) > 0 else None
+                labels = np.array(labels) if len(labels) > 0 else None
+                # torch_image = torch.from_numpy(img_array).unsqueeze(0).float().to(predictor.device) / 255.0
+                # predictor.set_torch_image(torch_image)
+                predictor.set_image(img_array / 255.0)
 
-                predictor.set_image(img_array)
-                masks, _, _ = predictor.predict(points, labels)
+                masks, _, _ = predictor.predict(point_coords=points, point_labels=labels)
                 # 遍历所有masks取一个最佳的mask
                 best_mask = None
                 best_reward = 0
@@ -104,7 +110,10 @@ def sam_random_point_mask(fg_point_num, bg_point_num, in_dir, ground_truth_dir, 
                         best_reward = reward
                         best_reward_index = i
                 # 保存best_mask到指定的文件，文件名规则为原来的文件名_mask_index.png
-                mask_image = Image.fromarray(best_mask.astype('uint8') * 255)
+                best_mask = best_mask > 0.5
+                best_mask = best_mask * 255
+                best_mask = best_mask.astype(np.uint8)
+                mask_image = Image.fromarray(best_mask)
                 mask_filename = f"{image_id}_mask_{best_reward_index}.png"
                 mask_image.save(os.path.join(
                     output_folder, mask_filename))

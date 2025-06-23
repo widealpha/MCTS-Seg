@@ -156,7 +156,6 @@ class Utils:
                 self.points = [[center_x, center_y]]
                 self.labels = [1]
 
-
     def hyper_param_str(self):
         """
         返回当前 MCTS 的超参数设置字符串。
@@ -171,6 +170,7 @@ class Utils:
             f"rt{1 if self.use_random_ground_truth else 0}"
             f"f{1 if self.float_reward else 0}"
         )
+
     def __str__(self):
         return (
             f"""GlobalInfo(
@@ -841,7 +841,7 @@ def calculate_iou_dice(results_dir):
         f"Mean Dice: {mean_dice}, Variance Dice: {var_dice}, Std Dice: {std_dice}")
     print(
         f"Mean Reward: {mean_reward}, Variance Reward: {var_reward}, Std Reward: {std_reward}")
-    
+
 
 def get_result_path():
     """
@@ -849,10 +849,13 @@ def get_result_path():
     根据当前时间戳创建一个新的目录，格式为 'results/mcts/年-月-日_时-分-秒'。
     """
     current_time = datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
-    result_dir = os.path.join(get_mcts_result_path(), Utils(None, None).hyper_param_str(), current_time)
+    args = parse_args()
+    result_dir = os.path.join(get_mcts_result_path(), Utils(
+        None, None).hyper_param_str(), f"{args.bone}-{current_time}")
     if not os.path.exists(result_dir):
         os.makedirs(result_dir)
     return result_dir
+
 
 def main():
     result_path = get_result_path()

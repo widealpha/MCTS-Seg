@@ -9,9 +9,10 @@ from matplotlib import pyplot as plt
 import matplotlib.font_manager as fm
 import numpy as np
 import torch
-from segment_anything import sam_model_registry
+from segment_anything import sam_model_registry, SamPredictor
 from torch.utils.tensorboard import SummaryWriter
 from src.cfg import parse_args
+from src.models.msa_predictor import MSAPredictor
 
 
 def get_dataset():
@@ -94,7 +95,6 @@ def setup_seed(seed: int = 2024):
     # torch.backends.cudnn.deterministic = True
     # torch.backends.cudnn.benchmark = False
 
-
 def load_sam():
     return load_sam_vit_h()
 
@@ -118,9 +118,13 @@ def load_sam_adapter():
     elif dataset == 'ISIC2016':
         weight_name = 'msa_isic2016_512_vit_h.pth'
     # load task-specific adapter
-    weights_path = os.path.join(
-        get_root_path(),
-        f'data/external/{weight_name}')
+    msa_ckpt = parse_args().msa_ckpt
+    if msa_ckpt is None or msa_ckpt == '':
+        weights_path = os.path.join(
+            get_root_path(),
+            f'data/external/{weight_name}')
+    else:
+        weights_path = parse_args().msa_ckpt
 
     print(f'=> resuming from {weights_path}')
     assert os.path.exists(weights_path)
@@ -131,10 +135,11 @@ def load_sam_adapter():
     start_epoch = checkpoint['epoch']
     best_tol = checkpoint['best_tol']
 
-    net.load_state_dict(checkpoint['state_dict'], strict=False)
+    state_dict = checkpoint['state_dict']
+    net.load_state_dict(state_dict, strict=False)
     # optimizer.load_state_dict(checkpoint['optimizer'], strict=False)
-
-    print(f'=> loaded checkpoint {checkpoint_file} (epoch {start_epoch})')
+    print(
+        f'=> loaded checkpoint {checkpoint_file} (epoch {start_epoch}, best_tol {best_tol})')
     return net.eval().to(get_device())
 
 
@@ -155,6 +160,7 @@ def load_medsam():
     sam = sam_model_registry["vit_b"](checkpoint=weights_path)
     sam.eval().to(device=get_device())
     return sam
+
 
 def calculate_iou(pred_mask, true_mask, threshold=0.5):
     if isinstance(pred_mask, torch.Tensor):
