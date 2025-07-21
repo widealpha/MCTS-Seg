@@ -5,18 +5,23 @@ dataset=ISIC2018
 image_size=512
 # 定义一个数组
 epochs=(1 2 3 4 5 10 15 20)
+train_time=2025_06_24_00_13_51
+log_time=$(date +"%Y%m%d_%H%M%S")
+encoder="vit_h"
 
 cd ../
 # 循环读取数组
 for epoch in "${epochs[@]}"; do
     echo "Current epoch: $epoch"
-    msa_ckpt="/home/kmh/ai/MCTS-Seg/src/baseline/Medical-SAM-Adapter/logs/msa-ISIC2018-512_2025_06_22_02_39_02/Model/epoch${epoch}_checkpoint.pth"
+    msa_ckpt="/home/kmh/ai/MCTS-Seg/src/baseline/Medical-SAM-Adapter/logs/msa-${dataset}-${image_size}-${encoder}_${train_time}/Model/epoch${epoch}_checkpoint.pth"
     # msa_ckpt="/home/kmh/ai/MCTS-Seg/src/baseline/Medical-SAM-Adapter/logs/msa-ISIC2016-512_2025_06_21_23_38_30/Model/epoch${epoch}_checkpoint.pth"
     
     echo "Running MSA baseline with dataset: ${dataset}, image size: ${image_size}, MSA checkpoint: ${msa_ckpt}"
 
-    log_time=$(date +"%Y%m%d_%H%M%S")
-    log_file="msa_baseline_test_epoch${epoch}_${log_time}.log"
+
+    log_dir="logs/test/${log_time}"
+    mkdir -p "$log_dir"
+    log_file="${log_dir}/msa_baseline_test_epoch${epoch}.log"
 
     python src/baseline/msa_baseline.py \
         -dataset="${dataset}" \

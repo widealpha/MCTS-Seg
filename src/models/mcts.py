@@ -92,6 +92,7 @@ class Utils:
         self.points = []
         self.labels = []
         self.cache = RewardCache()
+        self.baseline_reward = None
 
     def set_image(self, image: torch.Tensor, image_id: str = None, ground_truth=None):
         self.image = image  # tensor(C, H, W)
@@ -195,9 +196,15 @@ def load_model(model_name, sample_width, sample_height):
 
 def predict(predictor, reward_model, points: np.array, labels: np.array, image: torch.tensor):
     with torch.no_grad():
+        torch_points = None
+        torch_labels = None
+        if points is not None and labels is not None:
+            # 将 points 和 labels 转换为 torch tensor
+            torch_points = torch.from_numpy(points).unsqueeze(0).to(device)
+            torch_labels = torch.from_numpy(labels).unsqueeze(0).to(device)
         new_masks, *_ = predictor.predict_torch(
-            torch.from_numpy(points).unsqueeze(0).to(device),
-            torch.from_numpy(labels).unsqueeze(0).to(device),
+            torch_points,
+            torch_labels,
             multimask_output=False
         )
 
@@ -567,6 +574,15 @@ class GameState:
         """
         cache_key = [*self.action_history, self.current_action]
         reward = utils.cache.get_reward_cache(cache_key)
+        baseline_reward = utils.baseline_reward
+        if baseline_reward is None:
+            _, rewards = predict(predictor=utils.predictor,
+                                 reward_model=utils.reward_model,
+                                 points=None,
+                                 labels=None,
+                                 image=utils.single_image)
+            baseline_reward = rewards.item()
+            utils.baseline_reward = baseline_reward
 
         if reward is not None:
             return reward
@@ -583,7 +599,8 @@ class GameState:
             # 使用 RewardModel 计算 reward
             reward = rewards.item()
             utils.cache.set_reward_cache(cache_key, reward)
-            return reward
+            # 返回 1 或 -1，表示是否超过基线奖励
+            return reward if utils.float_reward else (1 if reward > baseline_reward else -1)
 
 
 class Node:
@@ -681,7 +698,7 @@ class MCTS:
             reward = sum(rewards) / len(rewards)
         else:
             reward = 0.0
-        return reward if utils.float_reward else int(reward > 0.5)
+        return reward if utils.float_reward else int(reward > 0.85)
 
     def backup(self, node: Node, reward: float) -> None:
         """
