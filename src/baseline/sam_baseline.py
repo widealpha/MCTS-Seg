@@ -53,6 +53,7 @@ def test_model(model, dataloader, device):
 
 
 def evaluate_model(model, output_dir, point_type, point_num):
+    print("output:", output_dir)
     sam_predictor = SamPredictor(model)
     _, test_dataloader = get_baseline_dataloader(
         batch_size=1, test_batch_size=1)
@@ -89,13 +90,33 @@ def evaluate_model(model, output_dir, point_type, point_num):
                         point_labels = None
                 elif point_type == 'random':
                     # Randomly sample points from the ground truth mask
+                    point_coords_arr = []
+                    point_labels_arr = []
+                    
+                    # y_indices, x_indices = np.where(gt > 0)
+                    # if len(y_indices) > 0 and len(x_indices) > 0:
+                    #     center_y = int(np.mean(y_indices))
+                    #     center_x = int(np.mean(x_indices))
+                    #     point_coords_arr.extend([[center_x, center_y]])
+                    #     point_labels_arr.extend([1] * 1)
+            
                     y_indices, x_indices = np.where(gt > 0)
                     if len(y_indices) > 0 and len(x_indices) > 0:
                         random_indices = np.random.choice(
                             len(y_indices), point_num, replace=False)
-                        point_coords = np.array(
+                        point_coords_arr.extend(
                             [[x_indices[i], y_indices[i]] for i in random_indices])
-                        point_labels = np.array([1] * point_num)
+                        point_labels_arr.extend([1] * point_num)
+                    # y_indices, x_indices = np.where(gt == 0)
+                    # if len(y_indices) > 0 and len(x_indices) > 0:
+                    #     random_indices = np.random.choice(
+                    #         len(y_indices), point_num, replace=False)
+                    #     point_coords_arr.extend(
+                    #         [[x_indices[i], y_indices[i]] for i in random_indices])
+                    #     point_labels_arr.extend([0] * point_num)
+                    if point_coords_arr and point_labels_arr:
+                        point_coords = np.array(point_coords_arr)
+                        point_labels = np.array(point_labels_arr)
                     else:
                         point_coords = None
                         point_labels = None

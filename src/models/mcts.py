@@ -85,7 +85,7 @@ class Utils:
         # 模拟时候选定的随机点数量
         self.simulation_actions = 1
         # 允许使用背景点
-        self.enable_background = False
+        self.enable_background = True
         self.use_ground_truth = False
         self.use_random_ground_truth = False
         self.float_reward = True

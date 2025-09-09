@@ -83,18 +83,33 @@ def gengerate_prompt(masks: torch.tensor, point_type, point_num: int = 1, device
                 point_coords = None
                 point_labels = None
         elif point_type == 'random':
+            point_coords_arr = []
+            point_labels_arr = []
+            
             y_indices, x_indices = np.where(gt > 0)
             if len(y_indices) > 0 and len(x_indices) > 0:
                 random_indices = np.random.choice(
                     len(y_indices), point_num, replace=False)
-                point_coords = np.array(
+                point_coords_arr.extend(
                     [[x_indices[i], y_indices[i]] for i in random_indices])
-                point_labels = np.array([1] * point_num)
-                batch_coords.append(point_coords)
-                batch_labels.append(point_labels)
+                point_labels_arr.extend([1] * point_num)
+
+            y_indices, x_indices = np.where(gt == 0)
+            if len(y_indices) > 0 and len(x_indices) > 0:
+                random_indices = np.random.choice(
+                    len(y_indices), point_num, replace=False)
+                point_coords_arr.extend(
+                    [[x_indices[i], y_indices[i]] for i in random_indices])
+                point_labels_arr.extend([0] * point_num)
+
+            if point_coords_arr and point_labels_arr:
+                point_coords = np.array(point_coords_arr)
+                point_labels = np.array(point_labels_arr)
             else:
                 point_coords = None
                 point_labels = None
+            batch_coords.append(point_coords)
+            batch_labels.append(point_labels)
         elif point_type == 'centroid':
             y_indices, x_indices = np.where(gt > 0)
             if len(y_indices) > 0 and len(x_indices) > 0:
@@ -113,7 +128,7 @@ def gengerate_prompt(masks: torch.tensor, point_type, point_num: int = 1, device
                 min_y, max_y = np.min(y_indices), np.max(y_indices)
                 min_x, max_x = np.min(x_indices), np.max(x_indices)
                 batch_boxes.append([min_x, min_y, max_x, max_y])
-    
+
     if point_type in ['center', 'random', 'centroid']:
         return torch.tensor(batch_coords).to(device), torch.tensor(batch_labels).to(device), None
     elif point_type == 'box':

@@ -71,6 +71,11 @@ def get_mcts_result_path(suffix=None):
     return res
 
 
+def get_test_result_path(suffix='all'):
+    res = os.path.join(get_result_path(), 'test', get_dataset(), suffix)
+    os.makedirs(res, exist_ok=True)
+    return res
+
 def get_ablation_result_path():
     res = os.path.join(get_result_path(), 'ablation', get_dataset())
     os.makedirs(res, exist_ok=True)
