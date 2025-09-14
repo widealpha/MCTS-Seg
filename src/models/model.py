@@ -19,10 +19,10 @@ class UNetRewardModel(nn.Module):
         with torch.no_grad():
             input = torch.zeros(1, *shape)
             output = self.unet(input)
-            output = self.conv(output)
-            output = self.pool(output)
-            output = self.conv1(output)
-            output = self.pool(output)
+            # output = self.conv(output)
+            # output = self.pool(output)
+            # output = self.conv1(output)
+            # output = self.pool(output)
             return int(torch.prod(torch.tensor(output.size()[1:])))
 
     def forward(self, image, mask):
@@ -64,9 +64,11 @@ class RewardPredictionModel(nn.Module):
         super().__init__(*args, **kwargs)
         # self.resnet = DualInputResNet(
         #     ResidualBlock, [2, 2, 2, 2], sample_width, sample_height)
-        self.encoder = models.resnet101(weights='DEFAULT')
+        self.encoder = models.resnet18(weights='DEFAULT')
         self.encoder.conv1 = nn.Conv2d(
             4, 64, kernel_size=7, stride=2, padding=3, bias=False)
+        self.activation = nn.ReLU()
+        self.dropout = nn.Dropout(0.5)
         self.fc = nn.Linear(1000, 1)
 
         # self.unet = UNet(n_channels=4, n_classes=1)
@@ -84,6 +86,8 @@ class RewardPredictionModel(nn.Module):
     def forward(self, image, mask):
         x = torch.cat([image, mask], dim=1)  # 拼接成2通道
         x = self.encoder(x)
+        x = self.activation(x)
+        x = self.dropout(x)
         return self.fc(x)  # 输出范围[0,1]
         # # 将image和mask拼接成 (B, C+1, H, W)
         # x = torch.cat((image, mask), dim=1)
@@ -103,3 +107,24 @@ class RewardPredictionModel(nn.Module):
         # x = F.relu(x)
         # x = self.fc2(x)
         # return x
+
+class SimpleRewardModel(nn.Module):
+    def __init__(self, *args, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+        self.conv1 = nn.Conv2d(
+            in_channels=4, out_channels=16, kernel_size=3, stride=2, padding=1)
+        self.pool = nn.AdaptiveAvgPool2d((1, 1))
+        self.fc2 = nn.Linear(16, 1)
+
+    def forward(self, image, mask):
+        # 将image和mask拼接成 (B, C+1, H, W)
+        x = torch.cat((image, mask), dim=1)
+        # 通过卷积层和池化层
+        x = self.conv1(x)
+        x = F.relu(x)
+        x = self.pool(x)
+        # 将特征图展平为一个向量
+        x = x.view(x.size(0), -1)
+        # 通过全连接层
+        x = self.fc2(x)
+        return x

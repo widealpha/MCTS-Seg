@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from src.models.unet import UNet
+from src.models.unet_model import UNet
 
 
 class UNetPolicyNetwork(nn.Module):

@@ -42,7 +42,8 @@ class ImageDataset(Dataset):
                 # 检查mask文件
                 if mask_match := mask_pattern.match(f):
                     mask_num = mask_match.group(1)
-                    reward_file = f"{image_id}_mask_{mask_num}_normalized_reward.txt"
+                    # reward_file = f"{image_id}_mask_{mask_num}_normalized_reward.txt"
+                    reward_file = f"{image_id}_mask_{mask_num}_reward.txt"
                     if reward_file in file_set:
                         valid_masks += 1
 
@@ -54,31 +55,42 @@ class ImageDataset(Dataset):
         return mask_counts.pop()
 
     def __len__(self):
-        return len(self.image_ids) * self.per_image_mask
+        # 每个image_id下的mask对数: C(per_image_mask, 2)
+        return len(self.image_ids) * self.per_image_mask * (self.per_image_mask - 1) // 2
 
     def __getitem__(self, idx):
-        image_id = f'{self.image_ids[idx // self.per_image_mask]}'
-        mask_id = f'{image_id}_mask_{idx % self.per_image_mask}'
+        # 计算属于哪个image_id
+        image_idx = idx // (self.per_image_mask * (self.per_image_mask - 1) // 2)
+        pair_idx = idx % (self.per_image_mask * (self.per_image_mask - 1) // 2)
+        image_id = self.image_ids[image_idx]
+        # 生成所有mask对
+        mask_indices = [(i, j) for i in range(self.per_image_mask) for j in range(i+1, self.per_image_mask)]
+        i, j = mask_indices[pair_idx]
+
         image_path = os.path.join(self.image_dir, f"{image_id}_raw.png")
-        mask_path = os.path.join(self.image_dir, f"{mask_id}.png")
-        reward_path = os.path.join(
-            self.image_dir, f"{mask_id}_normalized_reward.txt")
+        mask1_path = os.path.join(self.image_dir, f"{image_id}_mask_{i}.png")
+        mask2_path = os.path.join(self.image_dir, f"{image_id}_mask_{j}.png")
+        reward1_path = os.path.join(self.image_dir, f"{image_id}_mask_{i}_reward.txt")
+        reward2_path = os.path.join(self.image_dir, f"{image_id}_mask_{j}_reward.txt")
 
         try:
             image = self.transform(Image.open(image_path))
-            mask = self.transform(Image.open(mask_path))
-            with open(reward_path, 'r') as f:
-                reward = float(f.read().strip())
+            mask1 = self.transform(Image.open(mask1_path))
+            mask2 = self.transform(Image.open(mask2_path))
+            with open(reward1_path, 'r') as f:
+                reward1 = float(f.read().strip())
+            with open(reward2_path, 'r') as f:
+                reward2 = float(f.read().strip())
         except Exception as e:
-            print(f"Error loading data for {image_id}: {e}")
+            print(f"Error loading pair data for {image_id}: {e}")
             return None
-        # if image.shape[1] != 512 or image.shape[2] != 512:
-        #     print(f"Image shape is not 512x512 for {image_id}")
 
         return {
             'image': image,
-            'mask': mask,
-            'reward': reward,
+            'mask1': mask1,
+            'mask2': mask2,
+            'reward1': reward1,
+            'reward2': reward2,
             'image_id': image_id
         }
 

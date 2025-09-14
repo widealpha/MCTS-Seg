@@ -13,11 +13,12 @@ from src.models.msa_predictor import MSAPredictor
 from src.preprocess.helpers import filter_images, extract_image_id
 from src.utils.helpers import calculate_dice, load_sam, load_sam_adapter
 
+
 def get_sam_predictor():
-    # sam = load_sam()
-    # return SamPredictor(sam)
-    sam = load_sam_adapter()
-    return MSAPredictor(sam)
+    sam = load_sam()
+    return SamPredictor(sam)
+    # sam = load_sam_adapter()
+    # return MSAPredictor(sam)
 
 
 def rewards_function(mask, ground_truth):
@@ -27,12 +28,10 @@ def rewards_function(mask, ground_truth):
     :param ground_truth: ground truth mask
     :return: IoU 值
     """
-    mask = mask.astype(bool)
-    ground_truth = ground_truth.astype(bool)
     return calculate_dice(mask, ground_truth)
 
 
-def sam_random_point_mask(fg_point_num, bg_point_num, in_dir, ground_truth_dir, out_dir):
+def sam_random_point_mask(fg_point_num, bg_point_num, revert_flag,  in_dir, ground_truth_dir, out_dir):
     '''
     生成随机点标注的mask
     '''
@@ -83,14 +82,14 @@ def sam_random_point_mask(fg_point_num, bg_point_num, in_dir, ground_truth_dir, 
                         bg_point_num, len(y_indices_0)), replace=False)
                     for idx in indices_0:
                         points.append([x_indices_0[idx], y_indices_0[idx]])
-                        labels.append(0)
+                        labels.append(1 if revert_flag else 0)
 
                 if len(y_indices_1) > 0:
                     indices_1 = np.random.choice(len(y_indices_1), min(
                         fg_point_num, len(y_indices_1)), replace=False)
                     for idx in indices_1:
                         points.append([x_indices_1[idx], y_indices_1[idx]])
-                        labels.append(1)
+                        labels.append(0 if revert_flag else 1)
 
                 points = np.array(points) if len(points) > 0 else None
                 labels = np.array(labels) if len(labels) > 0 else None
@@ -98,7 +97,8 @@ def sam_random_point_mask(fg_point_num, bg_point_num, in_dir, ground_truth_dir, 
                 # predictor.set_torch_image(torch_image)
                 predictor.set_image(img_array / 255.0)
 
-                masks, _, _ = predictor.predict(point_coords=points, point_labels=labels)
+                masks, _, _ = predictor.predict(
+                    point_coords=points, point_labels=labels)
                 # 遍历所有masks取一个最佳的mask
                 best_mask = None
                 best_reward = 0
@@ -109,6 +109,12 @@ def sam_random_point_mask(fg_point_num, bg_point_num, in_dir, ground_truth_dir, 
                         best_mask = mask
                         best_reward = reward
                         best_reward_index = i
+                if best_mask is None:
+                    print(
+                        f"No valid masks generated for {image_file} with points {points} and labels {labels}.")
+                    best_mask = np.zeros_like(gt_array)
+                    best_reward = 0
+                    best_reward_index = 0
                 # 保存best_mask到指定的文件，文件名规则为原来的文件名_mask_index.png
                 best_mask = best_mask > 0.5
                 best_mask = best_mask * 255

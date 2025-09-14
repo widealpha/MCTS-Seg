@@ -4,8 +4,10 @@ import os
 import json
 import numpy as np
 import matplotlib.pyplot as plt
+from src.utils.helpers import set_chinese_font
+set_chinese_font()
 
-def analyze_and_plot(result_dir):
+def analyze_and_plot(result_dir, write_to_file=True):
     result_path = os.path.join(result_dir, 'detailed_results.json')
     if not os.path.exists(result_path):
         print(f"未找到结果文件: {result_path}")
@@ -30,11 +32,12 @@ def analyze_and_plot(result_dir):
     case_avg = {c: np.mean(case_means[c]) for c in cases}
     # 找到最优case
     best_case = max(case_avg, key=case_avg.get)
-    print(f"最优方案: {best_case}, 平均DICE={case_avg[best_case]:.4f}")
+    output_lines = []
+    output_lines.append(f"最优方案: {best_case}, 平均DICE={case_avg[best_case]:.4f}")
     for c in cases:
         if c != best_case:
             diff = case_avg[best_case] - case_avg[c]
-            print(f"比 {c} 平均高 {diff:.4f}")
+            output_lines.append(f"比 {c} 平均高 {diff:.4f}")
     # 统计每张图片最优case
     best_count = 0
     total = 0
@@ -43,7 +46,7 @@ def analyze_and_plot(result_dir):
         if best == best_case:
             best_count += 1
         total += 1
-    print(f"最优方案在 {best_count}/{total} ({best_count/total:.2%}) 图片上表现最好")
+    output_lines.append(f"最优方案在 {best_count}/{total} ({best_count/total:.2%}) 图片上表现最好")
     # 绘图
     plt.figure(figsize=(8,5))
     data = [case_means[c] for c in cases]
@@ -52,9 +55,25 @@ def analyze_and_plot(result_dir):
     plt.ylabel('DICE')
     plt.grid(True, axis='y')
     plt.savefig(os.path.join(result_dir, 'dice_case_boxplot.png'))
-    plt.show()
+    plt.close()
+    # 写入文件
+    if write_to_file:
+        out_path = os.path.join(result_dir, 'analysis.txt')
+        with open(out_path, 'w') as f:
+            for line in output_lines:
+                f.write(line + '\n')
+    # 也打印到控制台
+    for line in output_lines:
+        print(line)
+
+def analyze_all_subdirs(parent_dir):
+    for sub in os.listdir(parent_dir):
+        sub_path = os.path.join(parent_dir, sub)
+        if os.path.isdir(sub_path):
+            print(f"分析: {sub_path}")
+            analyze_and_plot(sub_path, write_to_file=True)
 
 if __name__ == '__main__':
-    # 修改为你的结果目录
-    result_dir = './results/test/ISIC2016/all/medical_sam_adapter/random_1'  # 或实际目录
-    analyze_and_plot(result_dir)
+    # 自动分析所有子目录
+    parent_dir = './results/test/ISIC2016/all/medical_sam_adapter'
+    analyze_all_subdirs(parent_dir)

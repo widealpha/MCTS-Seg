@@ -47,10 +47,10 @@ def normalize_rewards(rewards, output_dir, mean_reward=None, std_reward=None):
     # 对所有 reward 进行zscore并保存
     # normalized_rewards = [(r - mean_reward) /
     #                       std_reward for r in reward_values]
-    
+
     normalized_rewards = [(r - min_reward) /
                           (max_reward - min_reward) for r in reward_values]
-    
+
     for (reward, image_id, mask_id), norm_reward in zip(rewards, normalized_rewards):
         norm_reward_path = os.path.join(
             output_dir, f"{image_id}_mask_{mask_id}_normalized_reward.txt")
@@ -184,8 +184,8 @@ def generate_data():
         ground_truth_dir = os.path.join(raw_path, data_type, 'gt')
         random_point_masks_dir = []
         point_configs = [
-            # mask配置，第一个是前景点数量，第二个是背景点数量
-            [0, 0], [10, 0], [0, 10], [10, 10]
+            # mask配置，第一个是前景点数量，第二个是背景点数量，第三个是是否使用反向标签
+            [1, 0, False], [1, 0, True], [0, 1, False], [0, 1, True]
         ]
         for (index, point_config) in enumerate(point_configs):
             idx = index + 1
@@ -203,18 +203,19 @@ def generate_data():
 
         print(f"Generating data for {data_type} set")
 
-        # for i_dir in random_point_masks_dir:
-        #     config = i_dir[0]
-        #     fg_point_num = config[0]
-        #     bg_point_num = config[1]
-        #     out_dir = i_dir[1]
-        #     sam_random_point_mask(fg_point_num=fg_point_num, bg_point_num=bg_point_num,
-        #                               in_dir=raw_image_dir, out_dir=out_dir, ground_truth_dir=ground_truth_dir)
-            
-        # copy_dir(in_dir=ground_truth_dir, out_dir=augmented_dir, index=0)
-        # for i_dir in random_point_masks_dir:
-        #     copy_dir(in_dir=os.path.join(
-        #         i_dir[1]), out_dir=augmented_dir, index=i_dir[2])
+        for i_dir in random_point_masks_dir:
+            config = i_dir[0]
+            fg_point_num = config[0]
+            bg_point_num = config[1]
+            revert_flag = config[2]
+            out_dir = i_dir[1]
+            sam_random_point_mask(fg_point_num=fg_point_num, bg_point_num=bg_point_num, revert_flag=revert_flag,
+                                  in_dir=raw_image_dir, out_dir=out_dir, ground_truth_dir=ground_truth_dir)
+
+        copy_dir(in_dir=ground_truth_dir, out_dir=augmented_dir, index=0)
+        for i_dir in random_point_masks_dir:
+            copy_dir(in_dir=os.path.join(
+                i_dir[1]), out_dir=augmented_dir, index=i_dir[2])
 
         args = parse_args()
         image_size = (args.image_size, args.image_size)
