@@ -2,6 +2,10 @@ import matplotlib.pyplot as plt
 import numpy as np
 from scipy.interpolate import make_interp_spline
 
+label_fontsize = 24
+title_fontsize = 24
+tick_fontsize = 16
+
 # Data: k value, T * K^2, IoU±variance, Dice±variance
 data = [
     (2, 32, "0.5712974096604045,0.0091865912", "0.6642553071708625,0.010915174"),
@@ -57,42 +61,42 @@ fig, ((ax1, ax2), (ax3, ax4)) = plt.subplots(2, 2, figsize=(28, 14))
 # Subplot 1: IoU for T=8
 ax1.plot(k_smooth_t8, iou_smooth_t8, color='blue', label='IoU')
 ax1.errorbar(k_t8, iou_t8, yerr=iou_std_t8, fmt='o', color='blue', capsize=5)
-ax1.set_title('IoU vs. k (T=8) on ISIC2016 with SAM', fontsize=24, fontweight='bold')
-ax1.set_xlabel('k Value', fontsize=24)
-ax1.set_ylabel('IoU Score', fontsize=24)
+ax1.set_title('IoU vs. k (T=8) on ISIC2016 with SAM', fontsize=title_fontsize, fontweight='bold')
+ax1.set_xlabel('k Value', fontsize=label_fontsize)
+ax1.set_ylabel('IoU Score', fontsize=label_fontsize)
 ax1.grid(True, alpha=0.5)
 ax1.legend()
-ax1.tick_params(axis='both', which='major', labelsize=20)
+ax1.tick_params(axis='both', which='major', labelsize=tick_fontsize)
 
 # Subplot 2: Dice for T=8
 ax2.plot(k_smooth_t8, dice_smooth_t8, color='red', label='Dice')
 ax2.errorbar(k_t8, dice_t8, yerr=dice_std_t8, fmt='s', color='red', capsize=5)
-ax2.set_title('Dice vs. k (T=8) on ISIC2016 with SAM', fontsize=24, fontweight='bold')
-ax2.set_xlabel('k Value', fontsize=24)
-ax2.set_ylabel('Dice Score', fontsize=24)
+ax2.set_title('Dice vs. k (T=8) on ISIC2016 with SAM', fontsize=title_fontsize, fontweight='bold')
+ax2.set_xlabel('k Value', fontsize=label_fontsize)
+ax2.set_ylabel('Dice Score', fontsize=label_fontsize)
 ax2.grid(True, alpha=0.5)
 ax2.legend()
-ax2.tick_params(axis='both', which='major', labelsize=20)
+ax2.tick_params(axis='both', which='major', labelsize=tick_fontsize)
 
 # Subplot 3: IoU for T*k^2=512
 ax3.plot(k_smooth_tk512, iou_smooth_tk512, color='blue', label='IoU')
 ax3.errorbar(k_tk512, iou_tk512, yerr=iou_std_tk512, fmt='o', color='blue', capsize=5)
-ax3.set_title('IoU vs. k (T*k^2=512) on ISIC2016 with SAM', fontsize=24, fontweight='bold')
-ax3.set_xlabel('k Value', fontsize=24)
-ax3.set_ylabel('IoU Score', fontsize=24)
+ax3.set_title('IoU vs. k (T*k^2=512) on ISIC2016 with SAM', fontsize=title_fontsize, fontweight='bold')
+ax3.set_xlabel('k Value', fontsize=label_fontsize)
+ax3.set_ylabel('IoU Score', fontsize=label_fontsize)
 ax3.grid(True, alpha=0.5)
 ax3.legend()
-ax3.tick_params(axis='both', which='major', labelsize=20)
+ax3.tick_params(axis='both', which='major', labelsize=tick_fontsize)
 
 # Subplot 4: Dice for T*k^2=512
 ax4.plot(k_smooth_tk512, dice_smooth_tk512, color='red', label='Dice')
 ax4.errorbar(k_tk512, dice_tk512, yerr=dice_std_tk512, fmt='s', color='red', capsize=5)
-ax4.set_title('Dice vs. k (T*k^2=512) on ISIC2016 with SAM', fontsize=24, fontweight='bold')
-ax4.set_xlabel('k Value', fontsize=24)
-ax4.set_ylabel('Dice Score', fontsize=24)
+ax4.set_title('Dice vs. k (T*k^2=512) on ISIC2016 with SAM', fontsize=title_fontsize, fontweight='bold')
+ax4.set_xlabel('k Value', fontsize=label_fontsize)
+ax4.set_ylabel('Dice Score', fontsize=label_fontsize)
 ax4.grid(True, alpha=0.5)
 ax4.legend()
-ax4.tick_params(axis='both', which='major', labelsize=16)
+ax4.tick_params(axis='both', which='major', labelsize=tick_fontsize)
 
 plt.tight_layout()
 plt.savefig('iou_dice_curves_by_conditions.png', dpi=300)

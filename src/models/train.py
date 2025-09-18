@@ -1,3 +1,4 @@
+import torch.nn.functional as F
 import torch
 import torch.amp
 from torch.nn import MarginRankingLoss
@@ -29,7 +30,9 @@ def train(old_check_point=None):
     if old_check_point:
         model.load_state_dict(torch.load(old_check_point))
         print(f"Loaded model from {old_check_point}")
-    criterion = MarginRankingLoss(margin=1.0)
+    def bradley_terry_loss(score1, score2, target):
+        logits = score1 - score2
+        return F.binary_cross_entropy_with_logits(logits, target.float())
     optimizer = optim.Adam(model.parameters(), lr=lr,
                            weight_decay=weight_decay)
     # 训练循环
@@ -52,12 +55,11 @@ def train(old_check_point=None):
             reward2 = batch['reward2'].float().unsqueeze(1).to(device)
 
             with torch.amp.autocast(device):
-                reward_pred1 = model(image, mask1)
-                reward_pred2 = model(image, mask2)
-                # 计算标签：reward1 > reward2 -> 1，否则-1
-                target = torch.sign(reward1 - reward2)
-                target[target == 0] = 1  # 避免0标签
-                loss = criterion(reward_pred1, reward_pred2, target)
+                score1 = model(image, mask1)
+                score2 = model(image, mask2)
+                # y=1表示reward1>reward2，y=0表示reward1<reward2
+                target = (reward1 > reward2).float()
+                loss = bradley_terry_loss(score1, score2, target)
             scaler.scale(loss).backward()
             scaler.step(optimizer)
             scaler.update()
@@ -95,7 +97,7 @@ def train(old_check_point=None):
         checkpoints_path, 'latest.pth'))
     log_writer.add_text('Model/lr', f'{lr}')
     log_writer.add_text('Model/weight_decay', f'{weight_decay}')
-    log_writer.add_text('Model/criterion', f'{criterion}')
+    # log_writer.add_text('Model/criterion', f'{criterion}')
     log_writer.add_text(f'Model/model', f'{model}')
     dummy_input = (torch.randn(1, 3, sample_width, sample_height).to(device),
                    torch.randn(1, 1, sample_width, sample_height).to(device))
@@ -106,7 +108,6 @@ def train(old_check_point=None):
 def test(model, test_dataloader, log_writer, epoch):
     total_loss = 0.0
     total_samples = 0
-    criterion = MarginRankingLoss(margin=1.0)
 
     model.eval()
     with torch.no_grad():
@@ -117,19 +118,18 @@ def test(model, test_dataloader, log_writer, epoch):
             reward1 = batch['reward1'].float().unsqueeze(1).to(device)
             reward2 = batch['reward2'].float().unsqueeze(1).to(device)
 
-            reward_pred1 = model(image, mask1)
-            reward_pred2 = model(image, mask2)
-            target = torch.sign(reward1 - reward2)
-            target[target == 0] = 1
-            loss = criterion(reward_pred1, reward_pred2, target)
+            score1 = model(image, mask1)
+            score2 = model(image, mask2)
+            target = (reward1 > reward2).float()
+            loss = F.binary_cross_entropy_with_logits(score1 - score2, target)
             total_loss += loss.item() * image.size(0)
             total_samples += image.size(0)
 
     avg_loss = total_loss / total_samples
     if log_writer is not None:
-        log_writer.add_scalar('Test/PairwiseLoss', avg_loss, epoch)
+        log_writer.add_scalar('Test/BradleyTerryLoss', avg_loss, epoch)
 
-    print(f"Epoch [{epoch + 1}], Pairwise Ranking Loss: {avg_loss:.4f}")
+    print(f"Epoch [{epoch + 1}], Bradley-Terry Loss: {avg_loss:.4f}")
     return avg_loss, None, None
 
 

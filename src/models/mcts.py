@@ -85,7 +85,7 @@ class Utils:
         # 模拟时候选定的随机点数量
         self.simulation_actions = 1
         # 允许使用背景点
-        self.enable_background = True
+        self.enable_background = False
         self.use_ground_truth = False
         self.use_random_ground_truth = False
         self.float_reward = True
@@ -188,6 +188,10 @@ class Utils:
 
 def load_model(model_name, sample_width, sample_height):
     model_path = os.path.join(checkpoints_path, model_name)
+    # ISIC2016
+    # model_path = '/home/kmh/ai/MCTS-Seg/checkpoints/ISIC2016/2025-09-15_00-43-59/best_model_3.pth'
+    # ISIC2018
+    model_path = '/home/kmh/ai/MCTS-Seg/checkpoints/ISIC2018/2025-09-16_01-02-56/best_model_4.pth'
     model = RewardPredictionModel().to(device)
     model.load_state_dict(torch.load(model_path, weights_only=True))
     model.eval()
